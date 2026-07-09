@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated SUMO network/demand files (rebuild with setup/build_network.py)
+network/*.osm.xml
+network/*.net.xml
+network/*.rou.xml
+network/*.sumocfg
+network/*.alt.xml
+
+# Generated data/models/logs
+data/*.csv
+models/*.pkl
+logs/*.log
+logs/*.csv
+
+!network/.gitkeep
+!data/.gitkeep
+!models/.gitkeep
+!logs/.gitkeep
+
+.DS_Store
