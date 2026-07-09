@@ -31,7 +31,18 @@ check results, and anything the user must verify or fix.
   vehicles flowing, stats printed. **User check:** `sumo-gui -c
   network/kathmandu.sumocfg` (binary lives in `.venv/lib/python3.14/site-packages/sumo/bin/`).
 
-## Phase 2 — core automatic control (in progress)
+## Phase 2 — core automatic control ✅ verified
+
+- Live-sim checks (headless, real Kalanki network):
+  - `python -m src.controller --mode auto --steps 300`: 16 control cycles,
+    367 vehicles, no errors.
+  - Safety audit: wrapped `set_state` and checked all 55 applied signal
+    states — **zero unsafe consecutive switches**.
+  - Adaptivity under heavy demand (period 0.2 routes): distinct greens
+    [15, 30, 45, 48, 52, 58]s tracking vehicle counts 0→29, i.e. density
+    floors + count×2s, clamped at 60s. Busier lanes get longer greens.
+
+### Phase 2 details
 
 - `src/sumo_env.py`: SumoEnv class wrapping all TraCI access (only module that
   touches TraCI); sensor injection point documented.
