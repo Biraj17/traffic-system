@@ -110,6 +110,20 @@ check results, and anything the user must verify or fix.
 - Fresh-flow verification with NO env vars: pytest 46 green, network build
   runs, controller runs. Nothing left for the user to configure by hand.
 
+## Phase 7 — animated junction view ✅ verified
+
+- `dashboard/junction_view.py`: real lane geometry read once from the net
+  file with sumolib (no TraCI); approach lanes painted in their live signal
+  color (last 60 m before the stop line); vehicles drawn as heading-rotated
+  arrows. Controller streams a per-step live snapshot (positions + TLS
+  state) from the control thread when `capture_live` is on.
+- Rendered frames eyeballed per the dataviz procedure; full-lane coloring
+  was fixed to stop-line tails after the first render.
+- Dashboard boots HTTP 200 with 0 errors; 46 tests still green.
+- Note: `sumo-gui` from the pip install needs XQuartz on macOS
+  (`brew install --cask xquartz`, needs the user's admin password, then log
+  out/in). With the in-dashboard view this is optional.
+
 ### Phase 2 details
 
 - `src/sumo_env.py`: SumoEnv class wrapping all TraCI access (only module that

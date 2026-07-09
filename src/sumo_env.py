@@ -157,3 +157,13 @@ class SumoEnv:
     def get_lane_queue_length(self, lane_id: str) -> int:
         """Number of halted (queued) vehicles on a lane."""
         return int(self._traci.lane.getLastStepHaltingNumber(lane_id))
+
+    # -- live view -------------------------------------------------------------
+
+    def get_vehicle_positions(self) -> list[tuple[float, float, float]]:
+        """(x, y, angle°) of every vehicle, in network coordinates (meters)."""
+        out = []
+        for vid in self._traci.vehicle.getIDList():
+            x, y = self._traci.vehicle.getPosition(vid)
+            out.append((float(x), float(y), float(self._traci.vehicle.getAngle(vid))))
+        return out

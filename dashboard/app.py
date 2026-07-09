@@ -20,6 +20,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard import junction_view
 from src import metrics
 from src.controller import Controller, Mode
 
@@ -76,6 +77,7 @@ def start_simulation() -> None:
     env = SumoEnv(gui=False)
     env.start()
     ctl = Controller(env, mode=Mode.AUTOMATIC, ml_predict=ml_predict)
+    ctl.capture_live = True  # stream positions/signals for the animated view
 
     thread = threading.Thread(target=ctl.run, kwargs={"max_steps": 100_000}, daemon=True)
     thread.start()
@@ -185,6 +187,32 @@ def live_view() -> None:
     t2.metric("Vehicles in network", latest["active_vehicles"])
     t3.metric("Throughput (arrived)", k["throughput"])
     t4.metric("Avg junction wait / cycle", f"{k['avg_wait']:.0f} s")
+
+    # Animated top-down junction view (Phase 7): real lane geometry with
+    # live vehicles and per-lane signal colors from the control thread.
+    if "junction_geo" not in st.session_state:
+        try:
+            st.session_state.junction_geo = junction_view.load_geometry()
+        except Exception as exc:
+            st.session_state.junction_geo = None
+            st.warning(f"Junction view unavailable: {exc}")
+    geo = st.session_state.junction_geo
+    if geo is not None:
+        v1, v2 = st.columns([3, 1])
+        with v1:
+            st.plotly_chart(junction_view.build_figure(geo, ctl.live),
+                            use_container_width=True,
+                            config={"displayModeBar": False})
+        with v2:
+            st.markdown("**Live junction — Kalanki**")
+            st.markdown(
+                "🟩 green &nbsp; 🟨 yellow &nbsp; 🟥 red approach<br/>"
+                "🔵 arrows are vehicles (real OSM geometry)",
+                unsafe_allow_html=True,
+            )
+            if ctl.live:
+                st.caption(f"sim time {ctl.live['time']:.0f} s · "
+                           f"{len(ctl.live['positions'])} vehicles in network")
 
     c1, c2 = st.columns(2)
 

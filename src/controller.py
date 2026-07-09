@@ -54,6 +54,11 @@ class Controller:
         self._fixed_rotation: int = 0
         self.metrics_log: list[dict] = []
         self.stop_requested = False  # set by the dashboard to end run() cleanly
+        # Live snapshot for the dashboard's animated view, refreshed every sim
+        # step on the control thread (dashboard reads, never calls TraCI):
+        # {"positions": [(x, y, angle), ...], "tls_state": str, "time": float}
+        self.live: dict | None = None
+        self.capture_live = False
 
     # -- setup ---------------------------------------------------------------
 
@@ -150,6 +155,12 @@ class Controller:
             self.env.set_state(self.tls_id, step.state)
             for _ in range(int(step.duration_sec / config.STEP_LENGTH_SEC)):
                 self.env.step()
+                if self.capture_live:
+                    self.live = {
+                        "positions": self.env.get_vehicle_positions(),
+                        "tls_state": step.state,
+                        "time": self.env.sim_time(),
+                    }
 
     def serve(self, approach: int, green_sec: float) -> None:
         """Give `approach` a green of `green_sec` seconds via a safe transition."""
