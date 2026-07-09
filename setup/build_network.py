@@ -70,24 +70,38 @@ def bbox_for_junction(lat: float, lon: float, radius_deg: float) -> tuple[float,
     return (lon - radius_deg, lat - radius_deg, lon + radius_deg, lat + radius_deg)
 
 
-def fetch_osm_data(bbox: tuple[float, float, float, float], tools_dir: Path, out_file: Path) -> None:
-    """Download an OSM extract for the given bounding box using osmGet.py."""
+def fetch_osm_data(bbox: tuple[float, float, float, float], tools_dir: Path, prefix: Path) -> Path:
+    """Download an OSM extract for the given bounding box using osmGet.py.
+
+    osmGet.py writes `<prefix>_bbox.osm.xml`; returns that path.
+    """
     west, south, east, north = bbox
-    out_file.parent.mkdir(parents=True, exist_ok=True)
+    prefix.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
         str(tools_dir / "osmGet.py"),
         "--bbox",
         f"{west},{south},{east},{north}",
         "--prefix",
-        str(out_file.with_suffix("")),
+        str(prefix),
     ]
+    out_file = prefix.parent / f"{prefix.name}_bbox.osm.xml"
+    if out_file.exists():
+        print(f"OSM extract already present, skipping download: {out_file}")
+        return out_file
     print("Fetching OSM data:", " ".join(cmd))
     subprocess.run(cmd, check=True)
+    if not out_file.exists():
+        sys.exit(f"osmGet.py did not produce {out_file} — check network/bbox.")
+    return out_file
 
 
-def build_network(osm_file: Path, net_file: Path) -> None:
-    """Convert an OSM extract into a SUMO network, guessing traffic-light logic."""
+def build_network(osm_file: Path, net_file: Path, tls_node: str | None = None) -> None:
+    """Convert an OSM extract into a SUMO network, guessing traffic-light logic.
+
+    `tls_node`, when given, forces a signal at that junction id — needed for
+    Kathmandu, where junctions are rarely signal-tagged in OSM.
+    """
     cmd = [
         "netconvert",
         "--osm-files",
@@ -98,20 +112,64 @@ def build_network(osm_file: Path, net_file: Path) -> None:
         "--roundabouts.guess",
         "--ramps.guess",
         "--junctions.join",
+        "--tls.guess",
         "--tls.guess-signals",
-        "--tls.discard-simple",
         "--tls.join",
         "--output.street-names",
     ]
+    if tls_node:
+        cmd += ["--tls.set", tls_node]
     print("Building network:", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
 
-def generate_routes(net_file: Path, tools_dir: Path, route_file: Path, period: float, seed: int) -> None:
+def find_main_junction(net_file: Path) -> str:
+    """Return the id of the highest-degree junction nearest the network center.
+
+    Used as the signalized junction when OSM tags no signals in the area.
+    """
+    import sumolib
+
+    net = sumolib.net.readNet(str(net_file))
+    xmin, ymin, xmax, ymax = net.getBoundary()
+    cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
+
+    def score(node) -> tuple[int, float]:
+        x, y = node.getCoord()
+        degree = len(node.getIncoming()) + len(node.getOutgoing())
+        return (degree, -(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5))
+
+    best = max(net.getNodes(), key=score)
+    return best.getID()
+
+
+def ensure_traffic_light(osm_file: Path, net_file: Path) -> None:
+    """Guarantee the network has at least one traffic light.
+
+    If the first netconvert pass produced none (unsignalized OSM data), pick
+    the main central junction and rebuild with --tls.set on it.
+    """
+    import sumolib
+
+    net = sumolib.net.readNet(str(net_file))
+    if net.getTrafficLights():
+        return
+    main_junction = find_main_junction(net_file)
+    print(f"No signals in OSM data; forcing a traffic light at junction {main_junction}")
+    build_network(osm_file, net_file, tls_node=main_junction)
+    net = sumolib.net.readNet(str(net_file))
+    if not net.getTrafficLights():
+        sys.exit("Failed to create a traffic light — inspect the network in netedit.")
+
+
+def generate_routes(
+    net_file: Path, tools_dir: Path, route_file: Path, period: float, seed: int, prefix: str
+) -> None:
     """Generate a realistic random-trip demand profile for the network.
 
     A smaller `period` means more frequent trip insertion (heavier traffic);
-    used to distinguish peak vs off-peak profiles.
+    used to distinguish peak vs off-peak profiles. `prefix` keeps vehicle IDs
+    unique across route files so both can load together.
     """
     cmd = [
         sys.executable,
@@ -124,6 +182,8 @@ def generate_routes(net_file: Path, tools_dir: Path, route_file: Path, period: f
         str(period),
         "--seed",
         str(seed),
+        "--prefix",
+        prefix,
         "--validate",
         "--fringe-factor",
         "5",
@@ -163,22 +223,24 @@ def main() -> None:
     tools_dir = check_sumo_home()
     config.NETWORK_DIR.mkdir(parents=True, exist_ok=True)
 
-    osm_file = config.NETWORK_DIR / f"{args.name.lower()}.osm.xml"
+    prefix = config.NETWORK_DIR / args.name.lower()
     bbox = bbox_for_junction(args.lat, args.lon, args.radius)
 
-    fetch_osm_data(bbox, tools_dir, osm_file)
+    osm_file = fetch_osm_data(bbox, tools_dir, prefix)
     build_network(osm_file, config.NET_FILE)
+    ensure_traffic_light(osm_file, config.NET_FILE)
 
     # Off-peak: sparser demand (longer period between trip insertions).
-    generate_routes(config.NET_FILE, tools_dir, config.ROUTE_FILE_OFFPEAK, period=3.0, seed=42)
-    # Peak: denser demand.
-    generate_routes(config.NET_FILE, tools_dir, config.ROUTE_FILE_PEAK, period=0.8, seed=7)
-
-    write_sumocfg(
-        config.NET_FILE,
-        [config.ROUTE_FILE_PEAK, config.ROUTE_FILE_OFFPEAK],
-        config.SUMOCFG_FILE,
+    generate_routes(
+        config.NET_FILE, tools_dir, config.ROUTE_FILE_OFFPEAK, period=3.0, seed=42, prefix="off_"
     )
+    # Peak: denser demand.
+    generate_routes(
+        config.NET_FILE, tools_dir, config.ROUTE_FILE_PEAK, period=0.8, seed=7, prefix="pk_"
+    )
+
+    # Default scenario runs peak demand; off-peak is used by the ML pipeline.
+    write_sumocfg(config.NET_FILE, [config.ROUTE_FILE_PEAK], config.SUMOCFG_FILE)
 
     print(
         "\nDone. Verify with:\n"

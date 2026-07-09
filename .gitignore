@@ -22,3 +22,7 @@ logs/*.csv
 !logs/.gitkeep
 
 .DS_Store
+
+# randomTrips side artifacts
+trips.trips.xml
+*.trips.xml

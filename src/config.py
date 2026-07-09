@@ -30,15 +30,10 @@ JUNCTION_LON = 85.2810
 BBOX_RADIUS_DEG = 0.0035
 
 # --- Traffic signal light identifiers -------------------------------------
-# Populated with the real SUMO traffic-light ID and lane IDs once the network
-# is built by setup/build_network.py (Phase 1 "you check" step).
-TLS_ID = "kalanki_junction"
-LANES = {
-    "N": [],
-    "E": [],
-    "S": [],
-    "W": [],
-}
+# OSM node id of the main Kalanki junction, signalized by build_network.py.
+# The controller auto-discovers the TLS and its lane groups from the network
+# at startup, so this is informational/default only.
+TLS_ID = "2002197701"
 
 # --- Signal timing (seconds) ----------------------------------------------
 MIN_GREEN_SEC = 10
