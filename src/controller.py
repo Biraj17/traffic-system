@@ -1,11 +1,204 @@
 """Controller — the mode-manager "brain" and main control loop.
 
-Owns the priority finite-state machine (Emergency > Manual > Fixed > Automatic),
-drives the SUMO simulation step by step via sumo_env, and is the single
-interface the dashboard and ML layer use to observe state and issue commands.
+Owns the priority finite-state machine (Emergency > Manual > Fixed >
+Automatic), drives the SUMO simulation step by step via sumo_env, and is the
+single interface the dashboard and ML layer use to observe state and issue
+commands. Nothing else touches TraCI.
 
-CLI: `python -m src.controller --mode auto [--gui]`
-
-Implemented in Phase 2 (auto mode + main loop), extended in Phase 3 (fixed/manual)
-and Phase 4 (emergency).
+CLI: `python -m src.controller --mode auto|fixed [--gui] [--steps N]`
 """
+
+from __future__ import annotations
+
+import argparse
+from enum import IntEnum
+
+from src import config
+from src import safety
+from src.modes import automatic
+from src.sumo_env import SumoEnv
+
+
+class Mode(IntEnum):
+    """Operating modes; higher value = higher priority."""
+
+    AUTOMATIC = 0
+    FIXED = 1
+    MANUAL = 2
+    EMERGENCY = 3
+
+
+class Controller:
+    """Runs the junction: reads traffic state, decides, issues safe signal commands.
+
+    `approaches` maps approach index -> (phase state string, [lane ids]);
+    it is discovered from the real network's TLS program at startup, so the
+    same code works for any junction geometry.
+    """
+
+    def __init__(self, env: SumoEnv, mode: Mode = Mode.AUTOMATIC, ml_predict=None) -> None:
+        self.env = env
+        self.mode = mode
+        self.requested_mode = mode
+        self.ml_predict = ml_predict
+        self.tls_id: str | None = None
+        self.approaches: dict[int, tuple[str, list[str]]] = {}
+        self.current_approach: int | None = None
+        self.manual_target: int | None = None
+        self.emergency_lane: int | None = None
+        self._saved: tuple[Mode, str] | None = None  # emergency save/restore
+        self._fixed_rotation: int = 0
+        self.metrics_log: list[dict] = []
+
+    # -- setup ---------------------------------------------------------------
+
+    def discover_junction(self) -> None:
+        """Find the busiest TLS in the network and map its green phases to lanes.
+
+        Each phase containing at least one green link becomes one "approach".
+        """
+        tls_ids = self.env.get_tls_ids()
+        if not tls_ids:
+            raise RuntimeError("No traffic lights found in the network.")
+        # Busiest junction = the TLS controlling the most lanes.
+        self.tls_id = max(tls_ids, key=lambda t: len(set(self.env.get_controlled_lanes(t))))
+
+        lanes = self.env.get_controlled_lanes(self.tls_id)
+        idx = 0
+        for state in self.env.get_phase_states(self.tls_id):
+            green_lanes = sorted(
+                {lane for lane, ch in zip(lanes, state) if ch in safety.GREEN_CHARS}
+            )
+            if green_lanes and "y" not in state:
+                self.approaches[idx] = (state, green_lanes)
+                idx += 1
+        if not self.approaches:
+            raise RuntimeError(f"TLS '{self.tls_id}' has no green phases.")
+
+    # -- sensing --------------------------------------------------------------
+
+    def read_traffic(self) -> tuple[dict[int, int], dict[int, float]]:
+        """Per-approach (vehicle counts, accumulated waiting seconds)."""
+        counts: dict[int, int] = {}
+        waits: dict[int, float] = {}
+        for i, (_, lanes) in self.approaches.items():
+            counts[i] = sum(self.env.get_lane_vehicle_count(l) for l in lanes)
+            waits[i] = sum(self.env.get_lane_waiting_time(l) for l in lanes)
+        return counts, waits
+
+    # -- dashboard-facing commands ---------------------------------------------
+
+    def set_mode(self, mode: Mode, manual_target: int | None = None) -> None:
+        """Request a mode change (applied at the next decision point)."""
+        self.requested_mode = mode
+        if manual_target is not None:
+            self.manual_target = manual_target
+
+    def trigger_emergency(self, approach: int) -> None:
+        """Give `approach` an immediate green corridor (highest priority)."""
+        if self._saved is None:
+            self._saved = (self.mode, self.env.get_current_state(self.tls_id))
+        self.emergency_lane = approach
+        self.requested_mode = Mode.EMERGENCY
+
+    def clear_emergency(self) -> None:
+        """End the corridor and restore the mode active before the emergency."""
+        if self._saved is not None:
+            prior_mode, prior_state = self._saved
+            self._saved = None
+            self.emergency_lane = None
+            self.requested_mode = prior_mode
+            self._apply_transition(prior_state, config.MIN_GREEN_SEC)
+
+    # -- decision ---------------------------------------------------------------
+
+    def decide(self) -> tuple[int, float]:
+        """Pick (approach, green seconds) according to the active mode."""
+        self.mode = self.requested_mode
+        counts, waits = self.read_traffic()
+
+        if self.mode == Mode.EMERGENCY and self.emergency_lane is not None:
+            return self.emergency_lane, float(config.MAX_GREEN_SEC)
+        if self.mode == Mode.MANUAL and self.manual_target is not None:
+            return self.manual_target, float(config.FIXED_GREEN_SEC)
+        if self.mode == Mode.FIXED:
+            approach = self._fixed_rotation % len(self.approaches)
+            self._fixed_rotation += 1
+            return approach, float(config.FIXED_GREEN_SEC)
+        # AUTOMATIC (default, and the fail-safe fallback)
+        return automatic.decide(counts, waits, self.current_approach, self.ml_predict)
+
+    def _apply_transition(self, new_state: str, green_sec: float) -> None:
+        """Run the safe green->yellow->all-red->green sequence in real sim steps."""
+        old_state = self.env.get_current_state(self.tls_id)
+        for step in safety.safe_transition(old_state, new_state, green_sec):
+            self.env.set_state(self.tls_id, step.state)
+            for _ in range(int(step.duration_sec / config.STEP_LENGTH_SEC)):
+                self.env.step()
+
+    def serve(self, approach: int, green_sec: float) -> None:
+        """Give `approach` a green of `green_sec` seconds via a safe transition."""
+        state, _ = self.approaches[approach]
+        self._apply_transition(state, green_sec)
+        self.current_approach = approach
+
+    # -- main loop -----------------------------------------------------------------
+
+    def run(self, max_steps: int = 3600) -> None:
+        """Control the junction until `max_steps` sim seconds have elapsed.
+
+        Any TraCI/decision error flips the controller to FIXED mode (fail
+        safe) rather than crashing the simulation, per CLAUDE.md.
+        """
+        self.discover_junction()
+        try:
+            while self.env.sim_time() < max_steps:
+                try:
+                    approach, green = self.decide()
+                except Exception as exc:  # fail safe, never crash the sim
+                    print(f"[controller] decision error ({exc}); failing safe to FIXED")
+                    self.requested_mode = Mode.FIXED
+                    approach, green = self.decide()
+                counts, waits = self.read_traffic()
+                self.metrics_log.append(
+                    {
+                        "time": self.env.sim_time(),
+                        "mode": self.mode.name,
+                        "approach": approach,
+                        "green_sec": green,
+                        "counts": dict(counts),
+                        "waits": dict(waits),
+                        "active_vehicles": self.env.active_vehicle_count(),
+                    }
+                )
+                self.serve(approach, green)
+        finally:
+            self.env.close()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the traffic controller.")
+    parser.add_argument("--mode", choices=["auto", "fixed"], default="auto")
+    parser.add_argument("--gui", action="store_true", help="run with sumo-gui")
+    parser.add_argument("--steps", type=int, default=600, help="sim seconds to run")
+    args = parser.parse_args()
+
+    ml_predict = None
+    if args.mode == "auto":
+        try:
+            from src.ml.predict import predict_green
+
+            ml_predict = predict_green
+        except Exception:
+            pass  # no trained model yet -> pure rule-based automatic
+
+    env = SumoEnv(gui=args.gui)
+    env.start()
+    mode = Mode.AUTOMATIC if args.mode == "auto" else Mode.FIXED
+    ctl = Controller(env, mode=mode, ml_predict=ml_predict)
+    ctl.run(max_steps=args.steps)
+    print(f"Done: {len(ctl.metrics_log)} control cycles in {args.steps}s sim time.")
+
+
+if __name__ == "__main__":
+    main()
