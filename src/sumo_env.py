@@ -123,10 +123,12 @@ class SumoEnv:
         self.total_arrived += int(self._traci.simulation.getArrivedNumber())
 
     def close(self) -> None:
-        """Close the TraCI connection; safe to call twice."""
+        """Close the TraCI connection; safe to call twice or after SUMO died."""
         if self._traci is not None:
             try:
-                self._traci.close()
+                self._traci.close(wait=False)
+            except Exception:
+                pass  # SUMO already gone (e.g. GUI window closed) — nothing to do
             finally:
                 self._traci = None
 

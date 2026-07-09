@@ -19,6 +19,13 @@ from src.modes import automatic, emergency, fixed, manual
 from src.sumo_env import SumoEnv
 
 
+def _connection_lost(exc: Exception) -> bool:
+    """True when an exception means SUMO/TraCI went away (e.g. GUI closed)."""
+    name = type(exc).__name__
+    return name in ("FatalTraCIError", "TraCIException") or \
+        "connection closed" in str(exc).lower()
+
+
 class Mode(IntEnum):
     """Operating modes; higher value = higher priority."""
 
@@ -181,29 +188,39 @@ class Controller:
             while self.env.sim_time() < max_steps and not self.stop_requested:
                 try:
                     approach, green = self.decide()
-                except Exception as exc:  # fail safe, never crash the sim
+                except Exception as exc:
+                    if _connection_lost(exc):  # GUI window closed / SUMO ended
+                        print("[controller] SUMO closed — ending run cleanly.")
+                        break
+                    # any other decision error: fail safe, never crash the sim
                     print(f"[controller] decision error ({exc}); failing safe to FIXED")
                     self.requested_mode = Mode.FIXED
                     approach, green = self.decide()
-                counts, waits = self.read_traffic()
-                self.metrics_log.append(
-                    {
-                        "time": self.env.sim_time(),
-                        "mode": self.mode.name,
-                        "approach": approach,
-                        "green_sec": green,
-                        "counts": dict(counts),
-                        "waits": dict(waits),
-                        "active_vehicles": self.env.active_vehicle_count(),
-                        "arrived_total": self.env.total_arrived,
-                        "queue_total": sum(
-                            self.env.get_lane_queue_length(l)
-                            for _, lanes in self.approaches.values()
-                            for l in lanes
-                        ),
-                    }
-                )
-                self.serve(approach, green)
+                try:
+                    counts, waits = self.read_traffic()
+                    self.metrics_log.append(
+                        {
+                            "time": self.env.sim_time(),
+                            "mode": self.mode.name,
+                            "approach": approach,
+                            "green_sec": green,
+                            "counts": dict(counts),
+                            "waits": dict(waits),
+                            "active_vehicles": self.env.active_vehicle_count(),
+                            "arrived_total": self.env.total_arrived,
+                            "queue_total": sum(
+                                self.env.get_lane_queue_length(l)
+                                for _, lanes in self.approaches.values()
+                                for l in lanes
+                            ),
+                        }
+                    )
+                    self.serve(approach, green)
+                except Exception as exc:
+                    if _connection_lost(exc):
+                        print("[controller] SUMO closed — ending run cleanly.")
+                        break
+                    raise
         finally:
             self.env.close()
 
@@ -225,10 +242,16 @@ def main() -> None:
             pass  # no trained model yet -> pure rule-based automatic
 
     env = SumoEnv(gui=args.gui)
-    env.start()
-    mode = Mode.AUTOMATIC if args.mode == "auto" else Mode.FIXED
-    ctl = Controller(env, mode=mode, ml_predict=ml_predict)
-    ctl.run(max_steps=args.steps)
+    try:
+        env.start()
+        mode = Mode.AUTOMATIC if args.mode == "auto" else Mode.FIXED
+        ctl = Controller(env, mode=mode, ml_predict=ml_predict)
+        ctl.run(max_steps=args.steps)
+    except Exception as exc:
+        if _connection_lost(exc):
+            print("[controller] SUMO closed — exiting cleanly.")
+            return
+        raise
     print(f"Done: {len(ctl.metrics_log)} control cycles in {args.steps}s sim time.")
 
 
