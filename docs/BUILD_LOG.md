@@ -42,6 +42,17 @@ check results, and anything the user must verify or fix.
     [15, 30, 45, 48, 52, 58]s tracking vehicle counts 0→29, i.e. density
     floors + count×2s, clamped at 60s. Busier lanes get longer greens.
 
+## Phase 3 — fixed + manual modes ✅ verified
+
+- `src/modes/fixed.py` (strict rotation, equal FIXED_GREEN_SEC) and
+  `src/modes/manual.py` (operator target, validated, safe fallback);
+  controller.decide() now delegates to the mode modules.
+- `tests/conftest.py` adds FakeEnv (4-approach fake junction) so controller
+  behavior is testable without SUMO. 37 tests passing.
+- Live-sim demo: auto(3 cycles) → fixed(full 0→1→2→3 rotation @25s) →
+  manual(holds approach 2) → auto (resumes adaptive). 31 applied signal
+  states, zero unsafe switches.
+
 ### Phase 2 details
 
 - `src/sumo_env.py`: SumoEnv class wrapping all TraCI access (only module that

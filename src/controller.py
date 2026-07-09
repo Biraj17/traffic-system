@@ -15,7 +15,7 @@ from enum import IntEnum
 
 from src import config
 from src import safety
-from src.modes import automatic
+from src.modes import automatic, fixed, manual
 from src.sumo_env import SumoEnv
 
 
@@ -119,13 +119,13 @@ class Controller:
 
         if self.mode == Mode.EMERGENCY and self.emergency_lane is not None:
             return self.emergency_lane, float(config.MAX_GREEN_SEC)
-        if self.mode == Mode.MANUAL and self.manual_target is not None:
-            return self.manual_target, float(config.FIXED_GREEN_SEC)
+        if self.mode == Mode.MANUAL:
+            return manual.decide(self.manual_target, len(self.approaches))
         if self.mode == Mode.FIXED:
-            approach = self._fixed_rotation % len(self.approaches)
+            choice = fixed.decide(self._fixed_rotation, len(self.approaches))
             self._fixed_rotation += 1
-            return approach, float(config.FIXED_GREEN_SEC)
-        # AUTOMATIC (default, and the fail-safe fallback)
+            return choice
+        # AUTOMATIC (default)
         return automatic.decide(counts, waits, self.current_approach, self.ml_predict)
 
     def _apply_transition(self, new_state: str, green_sec: float) -> None:
