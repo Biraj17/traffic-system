@@ -1,5 +1,19 @@
 # Installing SUMO
 
+**Recommended (all platforms):** `pip install eclipse-sumo` — already in
+`requirements.txt`. Full binaries, auto-detected by the code, no env vars.
+
+**macOS + GUI note:** `sumo-gui` is an X11 app and needs **XQuartz**
+(`brew install --cask xquartz`, then log out/in once). The project code
+starts XQuartz automatically when you pass `--gui`; but if you run the bare
+`sumo-gui` command yourself in a fresh terminal before re-logging, prefix it
+with `DISPLAY=:0` (e.g. `DISPLAY=:0 sumo-gui -c network/kathmandu.sumocfg`).
+The dashboard's built-in junction view needs none of this.
+
+---
+
+The options below install SUMO system-wide instead of via pip.
+
 SUMO (Simulation of Urban MObility) is the traffic simulation engine this
 project runs on. It's a system-level install, not a pip package.
 

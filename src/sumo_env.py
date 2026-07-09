@@ -48,6 +48,31 @@ def ensure_sumo_home() -> str:
     return sumo_home
 
 
+def ensure_display_for_gui() -> None:
+    """On macOS, make sure an X11 display is reachable for sumo-gui.
+
+    The pip-installed sumo-gui is an X11 app: it needs XQuartz. Fresh
+    XQuartz installs only export DISPLAY after a logout/login, so when
+    DISPLAY is unset we start XQuartz and point at its default socket
+    directly. No-op on Linux/Windows or when DISPLAY is already set.
+    """
+    if sys.platform != "darwin" or os.environ.get("DISPLAY"):
+        return
+    import subprocess
+    import time
+
+    subprocess.run(["open", "-a", "XQuartz"], capture_output=True)
+    for _ in range(10):  # wait up to ~5s for the X socket to appear
+        if os.path.exists("/tmp/.X11-unix/X0"):
+            os.environ["DISPLAY"] = ":0"
+            return
+        time.sleep(0.5)
+    raise RuntimeError(
+        "sumo-gui needs XQuartz on macOS: `brew install --cask xquartz`, "
+        "then log out and back in (or start XQuartz manually)."
+    )
+
+
 def _import_traci():
     """Import traci, preferring the SUMO_HOME copy so versions match the binary."""
     sumo_home = ensure_sumo_home()
@@ -77,6 +102,8 @@ class SumoEnv:
         """Launch SUMO (or sumo-gui) and connect TraCI."""
         traci = _import_traci()
         binary = "sumo-gui" if self._gui else "sumo"
+        if self._gui:
+            ensure_display_for_gui()
         traci.start(
             [
                 binary,
