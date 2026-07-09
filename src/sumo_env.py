@@ -23,13 +23,37 @@ if TYPE_CHECKING:  # pragma: no cover
     pass
 
 
+def ensure_sumo_home() -> str:
+    """Make sure SUMO_HOME and PATH point at a SUMO install; return SUMO_HOME.
+
+    Falls back to the pip-installed `eclipse-sumo` package (which bundles the
+    sumo/sumo-gui/netconvert binaries) when the env var is unset, so no manual
+    exports are needed after `pip install -r requirements.txt`.
+    """
+    sumo_home = os.environ.get("SUMO_HOME")
+    if not sumo_home:
+        try:
+            import sumo as _sumo_pkg  # the eclipse-sumo binary package
+
+            sumo_home = os.path.dirname(_sumo_pkg.__file__)
+            os.environ["SUMO_HOME"] = sumo_home
+        except ImportError:
+            raise RuntimeError(
+                "SUMO not found: set SUMO_HOME or `pip install eclipse-sumo` "
+                "(see setup/install_sumo.md)."
+            )
+    bin_dir = os.path.join(sumo_home, "bin")
+    if os.path.isdir(bin_dir) and bin_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+    return sumo_home
+
+
 def _import_traci():
     """Import traci, preferring the SUMO_HOME copy so versions match the binary."""
-    sumo_home = os.environ.get("SUMO_HOME")
-    if sumo_home:
-        tools = os.path.join(sumo_home, "tools")
-        if tools not in sys.path:
-            sys.path.append(tools)
+    sumo_home = ensure_sumo_home()
+    tools = os.path.join(sumo_home, "tools")
+    if tools not in sys.path:
+        sys.path.append(tools)
     import traci  # deferred so tests can run without SUMO installed
 
     return traci

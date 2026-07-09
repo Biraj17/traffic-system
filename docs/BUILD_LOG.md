@@ -65,6 +65,25 @@ check results, and anything the user must verify or fix.
   the exact pre-emergency state (`GGGgGrrrrrrrrrrr`), auto resumed.
   14 applied states, zero unsafe switches.
 
+## Phase 5 — ML pipeline ✅ verified
+
+- `generate_data.py`: 10 episodes × 900s over the real network, demand
+  synthesized per-episode with randomTrips (period 0.2s jammed → 3.0s quiet).
+  Label = green time that would have exactly served the queue at the
+  observed discharge rate, clamped [10,60]s. 389 rows → data/training.csv.
+  (First attempt with only the 2 stock route files gave degenerate
+  all-zeros data — varied demand fixed it.)
+- `train_model.py` scores: **RandomForest R²=0.512, MAE=6.39s** vs
+  DecisionTree 0.373/6.69 and LinearRegression 0.509/6.85. RF saved to
+  models/green_time_rf.pkl.
+- `predict.py`: cached joblib load, dict-features API, FileNotFoundError
+  when untrained (automatic.decide catches → rule fallback).
+- Runtime verification: 20-veh peak queue → model 39.2s, rule 45s,
+  hybrid 41.1s; live controller run shows fine-grained ML-tuned greens
+  (12.5–16.5s) instead of coarse rule floors.
+- `sumo_env.ensure_sumo_home()` added: auto-detects the pip eclipse-sumo
+  install, so no manual SUMO_HOME/PATH exports are needed anywhere.
+
 ### Phase 2 details
 
 - `src/sumo_env.py`: SumoEnv class wrapping all TraCI access (only module that
