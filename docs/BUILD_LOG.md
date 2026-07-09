@@ -101,6 +101,15 @@ check results, and anything the user must verify or fix.
   the dashboard only reads controller memory and sets flags.
 - Verified: dashboard boots and serves HTTP 200 with no errors; 46 tests green.
 
+## Final polish ✅
+
+- docs/architecture.md (Mermaid system/FSM/sequence diagrams + module map),
+  docs/DEMO_SCRIPT.md (5-min runbook), docs/VIVA_QA.md (examiner Q&A).
+- README rewritten with a "run it in 5 commands" section; eclipse-sumo moved
+  into requirements.txt; build_network.py now auto-detects SUMO too.
+- Fresh-flow verification with NO env vars: pytest 46 green, network build
+  runs, controller runs. Nothing left for the user to configure by hand.
+
 ### Phase 2 details
 
 - `src/sumo_env.py`: SumoEnv class wrapping all TraCI access (only module that

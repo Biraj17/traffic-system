@@ -31,37 +31,31 @@ from src import config  # noqa: E402
 
 
 def check_sumo_home() -> Path:
-    """Verify SUMO_HOME is set and points at a real SUMO install.
+    """Locate SUMO (env var or pip eclipse-sumo) and return its tools dir.
 
-    Returns the tools directory (SUMO_HOME/tools) on success. Exits the
-    process with a clear instruction if SUMO is not installed — never fakes
+    Exits with a clear instruction if SUMO is not installed — never fakes
     the network build.
     """
-    sumo_home = os.environ.get("SUMO_HOME")
-    if not sumo_home:
+    from src.sumo_env import ensure_sumo_home
+
+    try:
+        sumo_home = ensure_sumo_home()
+    except RuntimeError as exc:
         sys.exit(
-            "SUMO_HOME is not set. Install SUMO first — see "
-            "setup/install_sumo.md — then re-run this script.\n"
-            "macOS:   brew install --cask sumo-gui\n"
-            "Linux:   sudo apt-get install sumo sumo-tools sumo-doc\n"
-            "Windows: https://sumo.dlr.de/docs/Downloads.php"
+            f"{exc}\n"
+            "Install options:\n"
+            "  pip:     pip install eclipse-sumo   (recommended, no setup)\n"
+            "  Linux:   sudo apt-get install sumo sumo-tools sumo-doc\n"
+            "  Windows: https://sumo.dlr.de/docs/Downloads.php\n"
+            "See setup/install_sumo.md."
         )
 
     tools_dir = Path(sumo_home) / "tools"
     if not tools_dir.is_dir():
         sys.exit(
-            f"SUMO_HOME is set to '{sumo_home}' but '{tools_dir}' does not "
+            f"SUMO_HOME resolved to '{sumo_home}' but '{tools_dir}' does not "
             "exist. Check your SUMO installation."
         )
-
-    for exe in ("netconvert",):
-        if subprocess.run(["which", exe], capture_output=True).returncode != 0:
-            sys.exit(
-                f"'{exe}' was not found on PATH. Make sure SUMO's bin "
-                "directory is on PATH (the installer usually does this; "
-                "reboot/re-open your shell after installing)."
-            )
-
     return tools_dir
 
 

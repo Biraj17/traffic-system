@@ -2,20 +2,35 @@
 
 An adaptive, AI-driven traffic signal control system simulated on a real
 Kathmandu intersection (default: **Kalanki**), with an operator dashboard.
-See `CLAUDE.md` for full architecture and design decisions, and
-`BUILD_PLAN.md` for the phase-by-phase build log.
 
-## Setup
+**Headline result:** on identical peak demand, adaptive+ML control cuts
+average junction wait by **~73%** vs a classic fixed timer (61 → 17 s/cycle)
+at equal throughput.
+
+Docs: `docs/architecture.md` (diagrams), `docs/DEMO_SCRIPT.md` (5-min demo),
+`docs/VIVA_QA.md` (examiner Q&A), `docs/BUILD_LOG.md` (verified build history).
+
+## Run it in 5 commands
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt          # includes SUMO itself (eclipse-sumo)
+python setup/build_network.py            # real Kalanki roads from OSM
+python -m src.ml.generate_data && python -m src.ml.train_model
+streamlit run dashboard/app.py           # the operator dashboard
+```
+
+`eclipse-sumo` ships the full SUMO binaries via pip — no system install or
+SUMO_HOME needed (the code auto-detects it). A system SUMO from
+`setup/install_sumo.md` works too.
+
+## Detailed setup
 
 ### 1. Install SUMO
 
-SUMO is a system-level install, not pip. Follow `setup/install_sumo.md` for
-your OS, then confirm:
-
-```bash
-sumo --version
-echo $SUMO_HOME
-```
+Easiest: `pip install eclipse-sumo` (bundled binaries, auto-detected).
+Alternatively install system SUMO per `setup/install_sumo.md` and set
+`SUMO_HOME`.
 
 ### 2. Python environment
 

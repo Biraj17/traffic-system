@@ -1,7 +1,9 @@
 # Smart Traffic Management System — Python dependencies
-# SUMO itself is a separate system install (see setup/install_sumo.md), not a
-# pip package. traci/sumolib below are the Python bindings.
+# eclipse-sumo ships the full SUMO binaries (sumo, sumo-gui, netconvert,
+# tools) via pip; src/sumo_env.py auto-detects it, so no system SUMO or
+# SUMO_HOME is required. traci/sumolib are the matching Python bindings.
 
+eclipse-sumo>=1.27.0
 traci>=1.18.0
 sumolib>=1.18.0
 
