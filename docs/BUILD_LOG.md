@@ -53,6 +53,18 @@ check results, and anything the user must verify or fix.
   manual(holds approach 2) → auto (resumes adaptive). 31 applied signal
   states, zero unsafe switches.
 
+## Phase 4 — emergency mode ✅ verified
+
+- `src/modes/emergency.py`: Snapshot dataclass + idempotent activate()
+  (re-trigger keeps the ORIGINAL snapshot) + corridor decide() at MAX_GREEN.
+- Controller trigger/clear delegate to the module; clear restores the exact
+  prior TLS state string and prior mode through a safe transition.
+- 46 tests passing (override priority for every lower mode, corridor-only
+  green, save/restore, no-op clear, transition safety).
+- Live-sim demo: emergency mid-auto forced corridor green, clear restored
+  the exact pre-emergency state (`GGGgGrrrrrrrrrrr`), auto resumed.
+  14 applied states, zero unsafe switches.
+
 ### Phase 2 details
 
 - `src/sumo_env.py`: SumoEnv class wrapping all TraCI access (only module that

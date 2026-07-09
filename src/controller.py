@@ -15,7 +15,7 @@ from enum import IntEnum
 
 from src import config
 from src import safety
-from src.modes import automatic, fixed, manual
+from src.modes import automatic, emergency, fixed, manual
 from src.sumo_env import SumoEnv
 
 
@@ -46,7 +46,7 @@ class Controller:
         self.current_approach: int | None = None
         self.manual_target: int | None = None
         self.emergency_lane: int | None = None
-        self._saved: tuple[Mode, str] | None = None  # emergency save/restore
+        self._saved: emergency.Snapshot | None = None  # emergency save/restore
         self._fixed_rotation: int = 0
         self.metrics_log: list[dict] = []
 
@@ -96,19 +96,19 @@ class Controller:
 
     def trigger_emergency(self, approach: int) -> None:
         """Give `approach` an immediate green corridor (highest priority)."""
-        if self._saved is None:
-            self._saved = (self.mode, self.env.get_current_state(self.tls_id))
+        self._saved = emergency.activate(
+            self._saved, self.mode, self.env.get_current_state(self.tls_id)
+        )
         self.emergency_lane = approach
         self.requested_mode = Mode.EMERGENCY
 
     def clear_emergency(self) -> None:
-        """End the corridor and restore the mode active before the emergency."""
+        """End the corridor and restore the mode + signal state active before it."""
         if self._saved is not None:
-            prior_mode, prior_state = self._saved
-            self._saved = None
+            snapshot, self._saved = self._saved, None
             self.emergency_lane = None
-            self.requested_mode = prior_mode
-            self._apply_transition(prior_state, config.MIN_GREEN_SEC)
+            self.requested_mode = snapshot.mode
+            self._apply_transition(snapshot.tls_state, config.MIN_GREEN_SEC)
 
     # -- decision ---------------------------------------------------------------
 
@@ -118,7 +118,7 @@ class Controller:
         counts, waits = self.read_traffic()
 
         if self.mode == Mode.EMERGENCY and self.emergency_lane is not None:
-            return self.emergency_lane, float(config.MAX_GREEN_SEC)
+            return emergency.decide(self.emergency_lane)
         if self.mode == Mode.MANUAL:
             return manual.decide(self.manual_target, len(self.approaches))
         if self.mode == Mode.FIXED:
