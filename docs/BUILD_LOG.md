@@ -84,6 +84,23 @@ check results, and anything the user must verify or fix.
 - `sumo_env.ensure_sumo_home()` added: auto-detects the pip eclipse-sumo
   install, so no manual SUMO_HOME/PATH exports are needed anywhere.
 
+## Phase 6 — dashboard + metrics ✅ verified
+
+- `src/metrics.py`: tidy per-cycle DataFrames, KPI computation (avg wait,
+  throughput, queue), timestamped run logs to logs/, and
+  `compare_baseline()` — same peak demand under Fixed vs Automatic+ML.
+- **Headline result: 72.6% average-wait reduction** (fixed 61.4 s/cycle →
+  adaptive 16.8 s/cycle) at equal throughput (293 → 295 vehicles, 600 s).
+- `dashboard/app.py` (Streamlit): start/stop sim, mode selector, emergency
+  activate/clear with approach picker, KPI tiles, live charts (traffic over
+  time, per-approach bars with current-green highlight, green-time-per-cycle
+  adaptivity), per-cycle table, and the baseline comparison section.
+  Palette validated with the dataviz checker (CVD ΔE 73.6, PASS).
+- Thread-safety refactor: emergency trigger/clear are now queued and applied
+  inside decide() so ALL TraCI traffic stays on the control-loop thread;
+  the dashboard only reads controller memory and sets flags.
+- Verified: dashboard boots and serves HTTP 200 with no errors; 46 tests green.
+
 ### Phase 2 details
 
 - `src/sumo_env.py`: SumoEnv class wrapping all TraCI access (only module that

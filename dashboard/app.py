@@ -1,9 +1,266 @@
-"""Streamlit operator dashboard.
+"""Streamlit operator dashboard for the Kalanki smart traffic system.
 
-Talks to the controller ONLY — never to TraCI directly (see CLAUDE.md golden
-rule). Shows mode selector (Auto/Fixed/Manual/Emergency), emergency button +
-lane picker, live metric tiles, live charts, and the Fixed-vs-Automatic
-baseline comparison.
+Talks to the Controller ONLY — never to TraCI directly (CLAUDE.md golden
+rule). The control loop runs in a background thread; the dashboard reads the
+controller's in-memory metrics and issues mode/emergency commands, which the
+controller applies at its next decision point on its own thread.
 
-Implemented in Phase 6.
+Run: `streamlit run dashboard/app.py`
 """
+
+from __future__ import annotations
+
+import sys
+import threading
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from src import metrics
+from src.controller import Controller, Mode
+
+# Validated dataviz palette (see dataviz skill reference): categorical slots
+# in fixed order — blue carries the adaptive system, aqua the fixed baseline.
+# Status red is reserved for the emergency state, never used as a series.
+C_ADAPTIVE = "#2a78d6"
+C_FIXED = "#1baf7a"
+C_CRITICAL = "#d03b3b"
+C_GOOD = "#0ca30c"
+INK_MUTED = "#898781"
+GRID = "#e1e0d9"
+SURFACE = "#fcfcfb"
+
+APPROACH_NAMES = ["North", "East", "South", "West"]
+
+
+def approach_label(i: int) -> str:
+    return APPROACH_NAMES[i] if i < len(APPROACH_NAMES) else f"Approach {i}"
+
+
+def base_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
+    fig.update_layout(
+        title={"text": title, "font": {"size": 14, "color": "#0b0b0b"}},
+        plot_bgcolor=SURFACE,
+        paper_bgcolor=SURFACE,
+        font={"family": "system-ui, -apple-system, 'Segoe UI', sans-serif",
+              "color": INK_MUTED, "size": 12},
+        xaxis={"gridcolor": GRID, "zeroline": False, "title": "simulation time (s)"},
+        yaxis={"gridcolor": GRID, "zeroline": False, "title": y_title},
+        margin={"l": 50, "r": 20, "t": 40, "b": 40},
+        legend={"orientation": "h", "y": 1.12, "x": 0},
+        hovermode="x unified",
+        height=320,
+    )
+    return fig
+
+
+# -- background control loop --------------------------------------------------
+
+
+def start_simulation() -> None:
+    """Launch SUMO + controller on a daemon thread; store handles in session."""
+    from src.sumo_env import SumoEnv
+
+    ml_predict = None
+    try:
+        from src.ml.predict import predict_green
+
+        ml_predict = predict_green
+    except Exception:
+        pass
+
+    env = SumoEnv(gui=False)
+    env.start()
+    ctl = Controller(env, mode=Mode.AUTOMATIC, ml_predict=ml_predict)
+
+    thread = threading.Thread(target=ctl.run, kwargs={"max_steps": 100_000}, daemon=True)
+    thread.start()
+    st.session_state.ctl = ctl
+    st.session_state.sim_thread = thread
+
+
+def stop_simulation() -> None:
+    ctl = st.session_state.get("ctl")
+    if ctl is not None:
+        ctl.stop_requested = True
+        thread = st.session_state.get("sim_thread")
+        if thread is not None:
+            thread.join(timeout=90)
+        df = metrics.to_dataframe(ctl.metrics_log)
+        if not df.empty:
+            metrics.save_run_log(df, "dashboard")
+    st.session_state.ctl = None
+    st.session_state.sim_thread = None
+
+
+def sim_running() -> bool:
+    thread = st.session_state.get("sim_thread")
+    return thread is not None and thread.is_alive()
+
+
+# -- page ----------------------------------------------------------------------
+
+st.set_page_config(page_title="Kalanki Smart Traffic Control", page_icon="🚦",
+                   layout="wide")
+st.title("🚦 Smart Traffic Control — Kalanki, Kathmandu")
+st.caption("Adaptive AI signal control on real OpenStreetMap geometry. "
+           "Demand is simulated (sensor-ready for real deployment).")
+
+# ---- sidebar: simulation + mode controls ----
+with st.sidebar:
+    st.header("Simulation")
+    if sim_running():
+        if st.button("⏹ Stop simulation", use_container_width=True):
+            stop_simulation()
+            st.rerun()
+    else:
+        if st.button("▶ Start simulation", type="primary", use_container_width=True):
+            start_simulation()
+            st.rerun()
+
+    ctl: Controller | None = st.session_state.get("ctl")
+
+    st.header("Mode")
+    mode_choice = st.radio(
+        "Operating mode",
+        ["Automatic (adaptive + ML)", "Fixed timer", "Manual"],
+        disabled=not sim_running(),
+    )
+    manual_choice = None
+    if mode_choice == "Manual":
+        manual_choice = st.selectbox(
+            "Green approach",
+            options=list(range(4)),
+            format_func=approach_label,
+            disabled=not sim_running(),
+        )
+    if sim_running() and ctl is not None and ctl.mode != Mode.EMERGENCY:
+        if mode_choice.startswith("Automatic"):
+            ctl.set_mode(Mode.AUTOMATIC)
+        elif mode_choice.startswith("Fixed"):
+            ctl.set_mode(Mode.FIXED)
+        else:
+            ctl.set_mode(Mode.MANUAL, manual_target=manual_choice)
+
+    st.header("Emergency")
+    em_approach = st.selectbox(
+        "Corridor approach",
+        options=list(range(4)),
+        format_func=approach_label,
+        disabled=not sim_running(),
+    )
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("🚨 ACTIVATE", type="primary", use_container_width=True,
+                      disabled=not sim_running()):
+            ctl.trigger_emergency(em_approach)
+    with col_b:
+        if st.button("Clear", use_container_width=True, disabled=not sim_running()):
+            ctl.clear_emergency()
+
+
+# ---- live view (auto-refreshing fragment) ----
+@st.fragment(run_every=2 if sim_running() else None)
+def live_view() -> None:
+    ctl: Controller | None = st.session_state.get("ctl")
+    if ctl is None or not ctl.metrics_log:
+        st.info("Press **Start simulation** in the sidebar to bring the junction online.")
+        return
+
+    df = metrics.to_dataframe(list(ctl.metrics_log))
+    k = metrics.kpis(df)
+    latest = ctl.metrics_log[-1]
+
+    mode_name = latest["mode"]
+    if mode_name == "EMERGENCY":
+        st.error(f"🚨 EMERGENCY corridor active — {approach_label(ctl.emergency_lane or 0)} "
+                 "held green, all other approaches red.")
+
+    t1, t2, t3, t4 = st.columns(4)
+    t1.metric("Mode", mode_name.title())
+    t2.metric("Vehicles in network", latest["active_vehicles"])
+    t3.metric("Throughput (arrived)", k["throughput"])
+    t4.metric("Avg junction wait / cycle", f"{k['avg_wait']:.0f} s")
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df["time"], y=df["active_vehicles"],
+                                 name="In network", mode="lines",
+                                 line={"color": C_ADAPTIVE, "width": 2}))
+        fig.add_trace(go.Scatter(x=df["time"], y=df["queue_total"],
+                                 name="Queued at junction", mode="lines",
+                                 line={"color": C_FIXED, "width": 2}))
+        st.plotly_chart(base_layout(fig, "Traffic over time", "vehicles"),
+                        use_container_width=True)
+
+    with c2:
+        counts = latest["counts"]
+        names = [approach_label(i) for i in sorted(counts)]
+        values = [counts[i] for i in sorted(counts)]
+        active = latest["approach"]
+        colors = [C_ADAPTIVE if i == active else "#9ec5f4" for i in sorted(counts)]
+        fig = go.Figure(go.Bar(x=names, y=values, marker_color=colors,
+                               marker_line_width=0, width=0.55,
+                               text=values, textposition="outside",
+                               textfont={"color": "#0b0b0b"}))
+        fig.add_annotation(text=f"dark bar = current green ({approach_label(active)})",
+                           xref="paper", yref="paper", x=0, y=1.08,
+                           showarrow=False, font={"color": INK_MUTED, "size": 11})
+        st.plotly_chart(base_layout(fig, "Vehicles per approach (now)", "vehicles"),
+                        use_container_width=True)
+
+    fig = go.Figure(go.Scatter(x=df["time"], y=df["green_sec"], mode="lines+markers",
+                               line={"color": C_ADAPTIVE, "width": 2},
+                               marker={"size": 8}, name="green time"))
+    st.plotly_chart(base_layout(fig, "Green time issued per cycle (adaptivity)", "seconds"),
+                    use_container_width=True)
+
+    with st.expander("Per-cycle data table"):
+        st.dataframe(df.tail(50), use_container_width=True)
+
+
+live_view()
+
+# ---- baseline comparison (the headline) ----
+st.divider()
+st.subheader("Fixed-timer baseline vs Adaptive + ML")
+st.caption("Runs the same peak demand twice, headless: classic fixed rotation vs "
+           "this system. Stop the live simulation first.")
+
+if st.button("Run comparison (2 × 600 s headless)", disabled=sim_running()):
+    with st.spinner("Running fixed-timer baseline, then adaptive control ..."):
+        st.session_state.comparison = metrics.compare_baseline(sim_seconds=600)
+
+comp = st.session_state.get("comparison")
+if comp is not None:
+    s = comp["summary"]
+    better = s["wait_reduction_pct"] >= 0
+
+    h1, h2, h3 = st.columns([1, 1, 1])
+    h1.metric("Fixed-timer avg wait", f"{s['fixed_avg_wait']:.0f} s")
+    h2.metric("Adaptive+ML avg wait", f"{s['auto_avg_wait']:.0f} s",
+              delta=f"{-s['wait_reduction_pct']:.0f}% vs fixed",
+              delta_color="inverse")
+    h3.metric("Throughput (fixed → adaptive)",
+              f"{s['fixed_throughput']} → {s['auto_throughput']}")
+
+    if better:
+        st.markdown(
+            f"<h3 style='color:{C_GOOD}'>Adaptive control cut average junction wait by "
+            f"{s['wait_reduction_pct']:.0f}%</h3>", unsafe_allow_html=True)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=comp["fixed"]["time"], y=comp["fixed"]["total_wait"],
+                             name="Fixed timer", mode="lines",
+                             line={"color": C_FIXED, "width": 2}))
+    fig.add_trace(go.Scatter(x=comp["auto"]["time"], y=comp["auto"]["total_wait"],
+                             name="Adaptive + ML", mode="lines",
+                             line={"color": C_ADAPTIVE, "width": 2}))
+    st.plotly_chart(base_layout(fig, "Accumulated junction wait per cycle — same demand",
+                                "waiting time (s)"), use_container_width=True)

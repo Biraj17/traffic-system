@@ -47,8 +47,13 @@ class Controller:
         self.manual_target: int | None = None
         self.emergency_lane: int | None = None
         self._saved: emergency.Snapshot | None = None  # emergency save/restore
+        # Emergency requests are queued and applied inside decide() so all
+        # TraCI traffic stays on the control-loop thread (dashboard safety).
+        self._pending_emergency: int | None = None
+        self._pending_clear = False
         self._fixed_rotation: int = 0
         self.metrics_log: list[dict] = []
+        self.stop_requested = False  # set by the dashboard to end run() cleanly
 
     # -- setup ---------------------------------------------------------------
 
@@ -95,25 +100,35 @@ class Controller:
             self.manual_target = manual_target
 
     def trigger_emergency(self, approach: int) -> None:
-        """Give `approach` an immediate green corridor (highest priority)."""
-        self._saved = emergency.activate(
-            self._saved, self.mode, self.env.get_current_state(self.tls_id)
-        )
-        self.emergency_lane = approach
-        self.requested_mode = Mode.EMERGENCY
+        """Request a green corridor for `approach`; applied at the next decision."""
+        self._pending_emergency = approach
 
     def clear_emergency(self) -> None:
-        """End the corridor and restore the mode + signal state active before it."""
-        if self._saved is not None:
-            snapshot, self._saved = self._saved, None
-            self.emergency_lane = None
-            self.requested_mode = snapshot.mode
-            self._apply_transition(snapshot.tls_state, config.MIN_GREEN_SEC)
+        """Request end of the corridor; prior mode+state restored at next decision."""
+        self._pending_clear = True
+
+    def _process_emergency_requests(self) -> None:
+        """Apply queued emergency trigger/clear (runs on the control thread)."""
+        if self._pending_emergency is not None:
+            self._saved = emergency.activate(
+                self._saved, self.mode, self.env.get_current_state(self.tls_id)
+            )
+            self.emergency_lane = self._pending_emergency
+            self._pending_emergency = None
+            self.requested_mode = Mode.EMERGENCY
+        if self._pending_clear:
+            self._pending_clear = False
+            if self._saved is not None:
+                snapshot, self._saved = self._saved, None
+                self.emergency_lane = None
+                self.requested_mode = snapshot.mode
+                self._apply_transition(snapshot.tls_state, config.MIN_GREEN_SEC)
 
     # -- decision ---------------------------------------------------------------
 
     def decide(self) -> tuple[int, float]:
         """Pick (approach, green seconds) according to the active mode."""
+        self._process_emergency_requests()
         self.mode = self.requested_mode
         counts, waits = self.read_traffic()
 
@@ -152,7 +167,7 @@ class Controller:
         """
         self.discover_junction()
         try:
-            while self.env.sim_time() < max_steps:
+            while self.env.sim_time() < max_steps and not self.stop_requested:
                 try:
                     approach, green = self.decide()
                 except Exception as exc:  # fail safe, never crash the sim
@@ -169,6 +184,12 @@ class Controller:
                         "counts": dict(counts),
                         "waits": dict(waits),
                         "active_vehicles": self.env.active_vehicle_count(),
+                        "arrived_total": self.env.total_arrived,
+                        "queue_total": sum(
+                            self.env.get_lane_queue_length(l)
+                            for _, lanes in self.approaches.values()
+                            for l in lanes
+                        ),
                     }
                 )
                 self.serve(approach, green)

@@ -71,8 +71,8 @@ def test_clear_restores_prior_mode_and_state(fake_env):
     assert fake_env.state == "rrrG"
 
     ctl.clear_emergency()
+    ctl.decide()  # restore is applied at the next decision point
     assert fake_env.state == state_before  # exact signal state restored
-    ctl.decide()
     assert ctl.mode == Mode.FIXED  # prior mode restored
 
 
@@ -80,6 +80,7 @@ def test_clear_without_active_emergency_is_a_noop(fake_env):
     ctl = make_controller(fake_env)
     ctl.decide()
     ctl.clear_emergency()  # must not raise or change anything
+    ctl.decide()
     assert ctl.mode == Mode.AUTOMATIC
 
 
@@ -91,6 +92,7 @@ def test_full_emergency_cycle_transitions_are_safe(fake_env):
     approach, green = ctl.decide()
     ctl.serve(approach, green)
     ctl.clear_emergency()
+    ctl.decide()  # applies the restore transition
     states = fake_env.applied_states
     for old, new in zip(states, states[1:]):
         assert safety.is_safe_switch(old, new), f"unsafe: {old} -> {new}"

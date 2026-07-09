@@ -54,8 +54,8 @@ python -m src.controller --mode auto
 python -m src.controller --mode auto --gui
 
 # ML pipeline
-python src/ml/generate_data.py
-python src/ml/train_model.py
+python -m src.ml.generate_data
+python -m src.ml.train_model
 
 # dashboard
 streamlit run dashboard/app.py

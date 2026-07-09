@@ -69,6 +69,7 @@ class SumoEnv:
         self._sumocfg = sumocfg or str(config.SUMOCFG_FILE)
         self._gui = gui
         self._traci = None
+        self.total_arrived = 0  # vehicles that completed their trip so far
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -92,6 +93,7 @@ class SumoEnv:
     def step(self) -> None:
         """Advance the simulation by one step (config.STEP_LENGTH_SEC seconds)."""
         self._traci.simulationStep()
+        self.total_arrived += int(self._traci.simulation.getArrivedNumber())
 
     def close(self) -> None:
         """Close the TraCI connection; safe to call twice."""
