@@ -236,11 +236,50 @@ def generate_polygons(osm_file: Path, net_file: Path, poly_file: Path) -> None:
         str(typemap),
         "--osm.keep-full-type",
         "false",
+        # keep OSM attributes (esp. name) as <param> children so the real
+        # place names can be extracted without any geo library at runtime
+        "--all-attributes",
+        "true",
         "-o",
         str(poly_file),
     ]
     print("Extracting buildings/POIs:", " ".join(cmd))
     subprocess.run(cmd, check=True)
+
+
+def extract_place_names(poly_file: Path, places_file: Path) -> None:
+    """Write named real places (shops, temples, banks…) to a JSON file.
+
+    Reads the names from the polyconvert output (already in net meters —
+    `--all-attributes` keeps OSM names as <param> children), so the dashboard
+    needs no geo library at runtime. pyproj must never be importable in the
+    dashboard process: libproj is not fork-safe on macOS and importing it
+    (even indirectly, via sumolib's optional import) makes launching SUMO
+    from Streamlit segfault.
+    """
+    import json
+    import xml.etree.ElementTree as ET
+
+    places: list[tuple[float, float, str]] = []
+    for el in ET.parse(poly_file).getroot():
+        if el.tag not in ("poi", "poly"):
+            continue
+        name = next((p.get("value") for p in el.iter("param")
+                     if p.get("key") == "name"), None)
+        if not name:
+            continue
+        if el.tag == "poi":
+            x, y = float(el.get("x")), float(el.get("y"))
+        else:
+            pts = [tuple(map(float, p.split(",")))
+                   for p in el.get("shape", "").split()]
+            if not pts:
+                continue
+            x = sum(p[0] for p in pts) / len(pts)
+            y = sum(p[1] for p in pts) / len(pts)
+        places.append((round(x, 2), round(y, 2), name))
+    places_file.write_text(json.dumps(places, ensure_ascii=False))
+    print(f"Wrote {len(places)} named places to {places_file}")
 
 
 def write_gui_settings(view_file: Path) -> None:
@@ -315,6 +354,7 @@ def main() -> None:
     generate_pedestrians(config.NET_FILE, tools_dir, config.ROUTE_FILE_PEDESTRIANS, seed=11)
     # Real Kalanki buildings and named places for the visual layers.
     generate_polygons(osm_file, config.NET_FILE, config.POLY_FILE)
+    extract_place_names(config.POLY_FILE, config.PLACES_FILE)
     write_gui_settings(config.GUI_SETTINGS_FILE)
 
     # Default scenario runs peak demand + pedestrians; off-peak is for ML.

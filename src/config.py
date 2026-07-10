@@ -19,6 +19,7 @@ ROUTE_FILE_OFFPEAK = NETWORK_DIR / "kathmandu.offpeak.rou.xml"
 ROUTE_FILE_PEDESTRIANS = NETWORK_DIR / "kathmandu.pedestrians.rou.xml"
 VTYPES_FILE = NETWORK_DIR / "kathmandu.vtypes.xml"
 POLY_FILE = NETWORK_DIR / "kathmandu.poly.xml"          # real buildings/POIs (OSM)
+PLACES_FILE = NETWORK_DIR / "kathmandu.places.json"     # named POIs in net coords
 GUI_SETTINGS_FILE = NETWORK_DIR / "kathmandu.view.xml"  # sumo-gui real-world scheme
 SUMOCFG_FILE = NETWORK_DIR / "kathmandu.sumocfg"
 MODEL_FILE = MODELS_DIR / "green_time_rf.pkl"

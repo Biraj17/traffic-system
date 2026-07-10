@@ -15,6 +15,7 @@ numpy>=1.26.0
 streamlit>=1.30.0
 plotly>=5.18.0
 matplotlib>=3.8.0
-pyproj>=3.6.0  # lon/lat -> net meters for real place-name labels
+# NOTE: do NOT add pyproj. sumolib auto-imports it when present, and libproj
+# is not fork-safe on macOS — it segfaults SUMO launches from the dashboard.
 
 pytest>=7.4.0

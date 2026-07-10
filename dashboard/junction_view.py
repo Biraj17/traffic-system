@@ -104,7 +104,7 @@ def load_geometry(tls_id: str | None = None) -> JunctionGeometry:
                 road_shapes.append([(float(x), float(y)) for x, y in shape])
 
     buildings = _load_buildings((cx, cy))
-    places = _load_place_names(net, (cx, cy))
+    places = _load_place_names((cx, cy))
     return JunctionGeometry(
         (float(cx), float(cy)), road_shapes, signal_lanes, buildings, places,
         lane_streets,
@@ -154,28 +154,24 @@ def _load_buildings(center: tuple[float, float]) -> list[list[tuple[float, float
     return out
 
 
-def _load_place_names(net, center: tuple[float, float]) -> list[tuple[float, float, str]]:
-    """Named real places (hospitals, schools, shops…) from the raw OSM extract.
+def _load_place_names(center: tuple[float, float]) -> list[tuple[float, float, str]]:
+    """Named real places (temples, shops, hospitals…) near the junction.
 
-    OSM nodes carry the names; positions are converted lon/lat -> net meters.
+    Read from the JSON that setup/build_network.py precomputed — never from
+    pyproj at runtime: importing pyproj into the dashboard process makes
+    launching SUMO segfault on macOS (libproj is not fork-safe).
     Returns the MAX_PLACE_LABELS places closest to the junction center.
     """
-    osm_file = config.NETWORK_DIR / f"{config.JUNCTION_NAME.lower()}_bbox.osm.xml"
-    if not osm_file.exists():
+    if not config.PLACES_FILE.exists():
         return []
+    import json
+
     cx, cy = center
     found: list[tuple[float, float, float, str]] = []  # (dist², x, y, name)
-    for _event, node in ET.iterparse(str(osm_file), events=("end",)):
-        if node.tag != "node":
-            continue
-        tags = {t.get("k"): t.get("v") for t in node.iter("tag")}
-        name = tags.get("name")
-        if name and ({"amenity", "shop", "tourism", "leisure"} & tags.keys()):
-            x, y = net.convertLonLat2XY(float(node.get("lon")), float(node.get("lat")))
-            d2 = (x - cx) ** 2 + (y - cy) ** 2
-            if d2 < (VIEW_RADIUS_M * 0.95) ** 2:
-                found.append((d2, float(x), float(y), name))
-        node.clear()  # keep iterparse memory flat over the whole extract
+    for x, y, name in json.loads(config.PLACES_FILE.read_text()):
+        d2 = (x - cx) ** 2 + (y - cy) ** 2
+        if d2 < (VIEW_RADIUS_M * 0.95) ** 2:
+            found.append((d2, float(x), float(y), name))
     found.sort()
     return [(x, y, name) for _d2, x, y, name in found[:MAX_PLACE_LABELS]]
 
