@@ -189,10 +189,31 @@ class SumoEnv:
 
     # -- live view -------------------------------------------------------------
 
-    def get_vehicle_positions(self) -> list[tuple[float, float, float]]:
-        """(x, y, angle°) of every vehicle, in network coordinates (meters)."""
+    def get_live_vehicles(self) -> list[dict]:
+        """One dict per vehicle: id, type, x/y (m, net coords), angle (deg),
+        speed (m/s), accumulated wait (s), current road id."""
         out = []
         for vid in self._traci.vehicle.getIDList():
             x, y = self._traci.vehicle.getPosition(vid)
-            out.append((float(x), float(y), float(self._traci.vehicle.getAngle(vid))))
+            out.append(
+                {
+                    "id": vid,
+                    # distribution members come back as "car@kathmanduMix#3"
+                    "type": self._traci.vehicle.getTypeID(vid).split("@")[0],
+                    "x": float(x),
+                    "y": float(y),
+                    "angle": float(self._traci.vehicle.getAngle(vid)),
+                    "speed": float(self._traci.vehicle.getSpeed(vid)),
+                    "wait": float(self._traci.vehicle.getAccumulatedWaitingTime(vid)),
+                    "road": str(self._traci.vehicle.getRoadID(vid)),
+                }
+            )
+        return out
+
+    def get_live_persons(self) -> list[dict]:
+        """One dict per pedestrian: id, x/y position (m, net coords)."""
+        out = []
+        for pid in self._traci.person.getIDList():
+            x, y = self._traci.person.getPosition(pid)
+            out.append({"id": pid, "x": float(x), "y": float(y)})
         return out

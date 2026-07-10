@@ -63,7 +63,7 @@ class Controller:
         self.stop_requested = False  # set by the dashboard to end run() cleanly
         # Live snapshot for the dashboard's animated view, refreshed every sim
         # step on the control thread (dashboard reads, never calls TraCI):
-        # {"positions": [(x, y, angle), ...], "tls_state": str, "time": float}
+        # {"vehicles": [dict], "persons": [dict], "tls_state": str, "time": float}
         self.live: dict | None = None
         self.capture_live = False
 
@@ -169,7 +169,8 @@ class Controller:
                 self.env.step()
                 if self.capture_live:
                     self.live = {
-                        "positions": self.env.get_vehicle_positions(),
+                        "vehicles": self.env.get_live_vehicles(),
+                        "persons": self.env.get_live_persons(),
                         "tls_state": step.state,
                         "time": self.env.sim_time(),
                     }

@@ -35,11 +35,30 @@ INK_MUTED = "#898781"
 GRID = "#e1e0d9"
 SURFACE = "#fcfcfb"
 
-APPROACH_NAMES = ["North", "East", "South", "West"]
+@st.cache_resource
+def junction_geo() -> junction_view.JunctionGeometry | None:
+    """Static junction geometry (roads, buildings, street names); loaded once."""
+    try:
+        return junction_view.load_geometry()
+    except Exception:
+        return None
+
+
+def approach_count() -> int:
+    ctl = st.session_state.get("ctl")
+    return len(ctl.approaches) if ctl is not None and ctl.approaches else 4
 
 
 def approach_label(i: int) -> str:
-    return APPROACH_NAMES[i] if i < len(APPROACH_NAMES) else f"Approach {i}"
+    """Label an approach by its real street name + compass direction."""
+    ctl = st.session_state.get("ctl")
+    geo = junction_geo()
+    if ctl is not None and geo is not None and i in ctl.approaches:
+        lanes = ctl.approaches[i][1]
+        street = junction_view.approach_street(geo, lanes) or "side road"
+        heading = junction_view.approach_direction(geo, lanes)
+        return f"{i + 1} · {street}" + (f" ({heading})" if heading else "")
+    return f"Approach {i + 1}"
 
 
 def base_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
@@ -136,7 +155,7 @@ with st.sidebar:
     if mode_choice == "Manual":
         manual_choice = st.selectbox(
             "Green approach",
-            options=list(range(4)),
+            options=list(range(approach_count())),
             format_func=approach_label,
             disabled=not sim_running(),
         )
@@ -151,7 +170,7 @@ with st.sidebar:
     st.header("Emergency")
     em_approach = st.selectbox(
         "Corridor approach",
-        options=list(range(4)),
+        options=list(range(approach_count())),
         format_func=approach_label,
         disabled=not sim_running(),
     )
@@ -190,13 +209,7 @@ def live_view() -> None:
 
     # Animated top-down junction view (Phase 7): real lane geometry with
     # live vehicles and per-lane signal colors from the control thread.
-    if "junction_geo" not in st.session_state:
-        try:
-            st.session_state.junction_geo = junction_view.load_geometry()
-        except Exception as exc:
-            st.session_state.junction_geo = None
-            st.warning(f"Junction view unavailable: {exc}")
-    geo = st.session_state.junction_geo
+    geo = junction_geo()
     if geo is not None:
         v1, v2 = st.columns([3, 1])
         with v1:
@@ -207,12 +220,19 @@ def live_view() -> None:
             st.markdown("**Live junction — Kalanki**")
             st.markdown(
                 "🟩 green &nbsp; 🟨 yellow &nbsp; 🟥 red approach<br/>"
-                "🔵 arrows are vehicles (real OSM geometry)",
+                "<span style='color:#d95413'>▲ motorbike</span> · "
+                "<span style='color:#2a78d6'>▲ car</span> · "
+                "<span style='color:#e0a10d'>▲ microbus</span> · "
+                "<span style='color:#0fa37a'>▲ bus</span> · "
+                "<span style='color:#6e6e78'>▲ truck</span> · "
+                "<span style='color:#8c5aa8'>● pedestrian</span><br/>"
+                "buildings & place names: real OSM data",
                 unsafe_allow_html=True,
             )
             if ctl.live:
                 st.caption(f"sim time {ctl.live['time']:.0f} s · "
-                           f"{len(ctl.live['positions'])} vehicles in network")
+                           f"{len(ctl.live['vehicles'])} vehicles · "
+                           f"{len(ctl.live['persons'])} pedestrians")
 
     c1, c2 = st.columns(2)
 

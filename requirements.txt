@@ -15,5 +15,6 @@ numpy>=1.26.0
 streamlit>=1.30.0
 plotly>=5.18.0
 matplotlib>=3.8.0
+pyproj>=3.6.0  # lon/lat -> net meters for real place-name labels
 
 pytest>=7.4.0
