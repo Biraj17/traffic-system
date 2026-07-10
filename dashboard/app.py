@@ -135,11 +135,11 @@ st.caption("Adaptive AI signal control on real OpenStreetMap geometry. "
 with st.sidebar:
     st.header("Simulation")
     if sim_running():
-        if st.button("⏹ Stop simulation", use_container_width=True):
+        if st.button("⏹ Stop simulation", width="stretch"):
             stop_simulation()
             st.rerun()
     else:
-        if st.button("▶ Start simulation", type="primary", use_container_width=True):
+        if st.button("▶ Start simulation", type="primary", width="stretch"):
             start_simulation()
             st.rerun()
 
@@ -176,11 +176,11 @@ with st.sidebar:
     )
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("🚨 ACTIVATE", type="primary", use_container_width=True,
+        if st.button("🚨 ACTIVATE", type="primary", width="stretch",
                       disabled=not sim_running()):
             ctl.trigger_emergency(em_approach)
     with col_b:
-        if st.button("Clear", use_container_width=True, disabled=not sim_running()):
+        if st.button("Clear", width="stretch", disabled=not sim_running()):
             ctl.clear_emergency()
 
 
@@ -211,10 +211,16 @@ def live_view() -> None:
     # live vehicles and per-lane signal colors from the control thread.
     geo = junction_geo()
     if geo is not None:
+        # Selection made on the previous fragment run; widget interactions
+        # rerun the fragment immediately, so the ring appears right away.
+        tracked_id = st.session_state.get("tracked_vehicle")
+        if tracked_id == "— none —":
+            tracked_id = None
         v1, v2 = st.columns([3, 1])
         with v1:
-            st.plotly_chart(junction_view.build_figure(geo, ctl.live),
-                            use_container_width=True,
+            st.plotly_chart(junction_view.build_figure(geo, ctl.live,
+                                                       tracked_id=tracked_id),
+                            width="stretch",
                             config={"displayModeBar": False})
         with v2:
             st.markdown("**Live junction — Kalanki**")
@@ -234,6 +240,34 @@ def live_view() -> None:
                            f"{len(ctl.live['vehicles'])} vehicles · "
                            f"{len(ctl.live['persons'])} pedestrians")
 
+                # -- per-vehicle tracking ---------------------------------
+                st.markdown("**Track a vehicle**")
+                vehicles = ctl.live.get("vehicles", [])
+                ids = ["— none —"] + sorted(v["id"] for v in vehicles)
+                # The tracked vehicle may finish its trip between refreshes;
+                # reset the widget before it renders or streamlit errors on
+                # a stored value that is no longer among the options.
+                if st.session_state.get("tracked_vehicle") not in ids:
+                    st.session_state["tracked_vehicle"] = "— none —"
+                st.selectbox("Follow vehicle", options=ids,
+                             key="tracked_vehicle",
+                             label_visibility="collapsed")
+                if tracked_id:
+                    v = next((v for v in vehicles if v["id"] == tracked_id), None)
+                    if v is None:
+                        st.success(f"{tracked_id} completed its trip ✅")
+                    else:
+                        icon = {"motorbike": "🏍", "car": "🚗", "microbus": "🚐",
+                                "bus": "🚌", "truck": "🚚"}.get(v["type"], "🚗")
+                        road = v["road"]
+                        street = ("crossing the junction" if road.startswith(":")
+                                  else geo.lane_streets.get(road + "_0", road))
+                        st.markdown(f"{icon} **{v['id']}** — {v['type']}")
+                        m1, m2 = st.columns(2)
+                        m1.metric("Speed", f"{v['speed'] * 3.6:.0f} km/h")
+                        m2.metric("Waited", f"{v['wait']:.0f} s")
+                        st.caption(f"on {street} · marked ⭕ on the map")
+
     c1, c2 = st.columns(2)
 
     with c1:
@@ -245,7 +279,7 @@ def live_view() -> None:
                                  name="Queued at junction", mode="lines",
                                  line={"color": C_FIXED, "width": 2}))
         st.plotly_chart(base_layout(fig, "Traffic over time", "vehicles"),
-                        use_container_width=True)
+                        width="stretch")
 
     with c2:
         counts = latest["counts"]
@@ -261,16 +295,16 @@ def live_view() -> None:
                            xref="paper", yref="paper", x=0, y=1.08,
                            showarrow=False, font={"color": INK_MUTED, "size": 11})
         st.plotly_chart(base_layout(fig, "Vehicles per approach (now)", "vehicles"),
-                        use_container_width=True)
+                        width="stretch")
 
     fig = go.Figure(go.Scatter(x=df["time"], y=df["green_sec"], mode="lines+markers",
                                line={"color": C_ADAPTIVE, "width": 2},
                                marker={"size": 8}, name="green time"))
     st.plotly_chart(base_layout(fig, "Green time issued per cycle (adaptivity)", "seconds"),
-                    use_container_width=True)
+                    width="stretch")
 
     with st.expander("Per-cycle data table"):
-        st.dataframe(df.tail(50), use_container_width=True)
+        st.dataframe(df.tail(50), width="stretch")
 
 
 live_view()
@@ -311,4 +345,4 @@ if comp is not None:
                              name="Adaptive + ML", mode="lines",
                              line={"color": C_ADAPTIVE, "width": 2}))
     st.plotly_chart(base_layout(fig, "Accumulated junction wait per cycle — same demand",
-                                "waiting time (s)"), use_container_width=True)
+                                "waiting time (s)"), width="stretch")
