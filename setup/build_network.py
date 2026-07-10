@@ -221,6 +221,41 @@ def generate_pedestrians(net_file: Path, tools_dir: Path, route_file: Path, seed
     subprocess.run(cmd, check=True)
 
 
+def generate_polygons(osm_file: Path, net_file: Path, poly_file: Path) -> None:
+    """Extract real building footprints and named POIs (shops, hospitals,
+    schools…) from the OSM data so both sumo-gui and the dashboard can draw
+    the actual Kalanki neighbourhood."""
+    typemap = Path(os.environ["SUMO_HOME"]) / "data" / "typemap" / "osmPolyconvert.typ.xml"
+    cmd = [
+        "polyconvert",
+        "--osm-files",
+        str(osm_file),
+        "--net-file",
+        str(net_file),
+        "--type-file",
+        str(typemap),
+        "--osm.keep-full-type",
+        "false",
+        "-o",
+        str(poly_file),
+    ]
+    print("Extracting buildings/POIs:", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+
+
+def write_gui_settings(view_file: Path) -> None:
+    """Write sumo-gui view settings: the 'real world' scheme so vehicles show
+    their true shapes/colors and buildings render like a map."""
+    view_file.write_text(
+        """<viewsettings>
+    <scheme name="real world"/>
+    <delay value="60"/>
+</viewsettings>
+"""
+    )
+    print(f"Wrote {view_file}")
+
+
 def write_sumocfg(net_file: Path, route_files: list[Path], cfg_file: Path) -> None:
     """Write a .sumocfg tying the network and routes together.
 
@@ -235,11 +270,15 @@ def write_sumocfg(net_file: Path, route_files: list[Path], cfg_file: Path) -> No
     <input>
         <net-file value="{net_file.name}"/>
         <route-files value="{route_list}"/>
+        <additional-files value="{config.POLY_FILE.name}"/>
     </input>
     <time>
         <begin value="0"/>
         <step-length value="{config.STEP_LENGTH_SEC}"/>
     </time>
+    <gui_only>
+        <gui-settings-file value="{config.GUI_SETTINGS_FILE.name}"/>
+    </gui_only>
 </configuration>
 """
     )
@@ -274,6 +313,9 @@ def main() -> None:
     )
     # People walking and crossing at the junction.
     generate_pedestrians(config.NET_FILE, tools_dir, config.ROUTE_FILE_PEDESTRIANS, seed=11)
+    # Real Kalanki buildings and named places for the visual layers.
+    generate_polygons(osm_file, config.NET_FILE, config.POLY_FILE)
+    write_gui_settings(config.GUI_SETTINGS_FILE)
 
     # Default scenario runs peak demand + pedestrians; off-peak is for ML.
     write_sumocfg(

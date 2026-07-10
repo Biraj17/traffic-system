@@ -9,6 +9,8 @@ network/*.net.xml
 network/*.rou.xml
 network/*.sumocfg
 network/*.alt.xml
+network/*.poly.xml
+network/*.view.xml
 
 # Generated data/models/logs
 data/*.csv
