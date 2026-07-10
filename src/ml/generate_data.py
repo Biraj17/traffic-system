@@ -58,6 +58,11 @@ def make_route_file(period: float, seed: int):
         "--prefix", f"e{seed}_",
         "--validate",
         "--fringe-factor", "10",
+        # Same Kathmandu vehicle mix as the live scenario, so the model
+        # learns discharge rates of motorbike/bus/truck traffic, not just cars.
+        "--additional-files", str(config.VTYPES_FILE),
+        "--trip-attributes", 'type="kathmanduMix"',
+        "--edge-permission", "passenger",
     ]
     subprocess.run(cmd, check=True, capture_output=True)
     return out
