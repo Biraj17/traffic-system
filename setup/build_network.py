@@ -110,6 +110,10 @@ def build_network(osm_file: Path, net_file: Path, tls_node: str | None = None) -
         "--tls.guess-signals",
         "--tls.join",
         "--output.street-names",
+        # Pedestrian infrastructure: sidewalks along roads + zebra crossings
+        # at junctions, so person demand can walk and cross legally.
+        "--sidewalks.guess",
+        "--crossings.guess",
     ]
     if tls_node:
         cmd += ["--tls.set", tls_node]
@@ -163,7 +167,9 @@ def generate_routes(
 
     A smaller `period` means more frequent trip insertion (heavier traffic);
     used to distinguish peak vs off-peak profiles. `prefix` keeps vehicle IDs
-    unique across route files so both can load together.
+    unique across route files so both can load together. Every trip draws its
+    vehicle type from the Kathmandu mix distribution (motorbikes, cars,
+    microbuses, buses, trucks — see network/kathmandu.vtypes.xml).
     """
     cmd = [
         sys.executable,
@@ -181,13 +187,47 @@ def generate_routes(
         "--validate",
         "--fringe-factor",
         "5",
+        "--additional-files",
+        str(config.VTYPES_FILE),
+        "--trip-attributes",
+        'type="kathmanduMix"',
+        "--edge-permission",
+        "passenger",
     ]
     print("Generating routes:", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
 
+def generate_pedestrians(net_file: Path, tools_dir: Path, route_file: Path, seed: int) -> None:
+    """Generate walking-person demand (uses the sidewalks/crossings in the net)."""
+    cmd = [
+        sys.executable,
+        str(tools_dir / "randomTrips.py"),
+        "-n",
+        str(net_file),
+        "-r",
+        str(route_file),
+        "--pedestrians",
+        "--period",
+        "2.0",
+        "--seed",
+        str(seed),
+        "--prefix",
+        "ped_",
+        "--max-distance",
+        "600",
+    ]
+    print("Generating pedestrians:", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+
+
 def write_sumocfg(net_file: Path, route_files: list[Path], cfg_file: Path) -> None:
-    """Write a .sumocfg tying the network and route files together."""
+    """Write a .sumocfg tying the network and routes together.
+
+    The Kathmandu vehicle-type definitions are already embedded in each
+    .rou.xml by duarouter during route validation, so they are NOT loaded
+    again here (doing so raises a duplicate-vType error in SUMO).
+    """
     route_list = ",".join(str(r.name) for r in route_files)
     cfg_file.write_text(
         f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -232,9 +272,15 @@ def main() -> None:
     generate_routes(
         config.NET_FILE, tools_dir, config.ROUTE_FILE_PEAK, period=0.8, seed=7, prefix="pk_"
     )
+    # People walking and crossing at the junction.
+    generate_pedestrians(config.NET_FILE, tools_dir, config.ROUTE_FILE_PEDESTRIANS, seed=11)
 
-    # Default scenario runs peak demand; off-peak is used by the ML pipeline.
-    write_sumocfg(config.NET_FILE, [config.ROUTE_FILE_PEAK], config.SUMOCFG_FILE)
+    # Default scenario runs peak demand + pedestrians; off-peak is for ML.
+    write_sumocfg(
+        config.NET_FILE,
+        [config.ROUTE_FILE_PEAK, config.ROUTE_FILE_PEDESTRIANS],
+        config.SUMOCFG_FILE,
+    )
 
     print(
         "\nDone. Verify with:\n"

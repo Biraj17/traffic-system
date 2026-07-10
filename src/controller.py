@@ -83,8 +83,13 @@ class Controller:
         lanes = self.env.get_controlled_lanes(self.tls_id)
         idx = 0
         for state in self.env.get_phase_states(self.tls_id):
+            # Internal lanes (":junction_c0_0" etc.) are pedestrian crossings /
+            # junction interiors — approaches are real road lanes only, and
+            # pedestrian-only phases are skipped (crossings get their walk
+            # signal within the vehicle phase states netconvert paired them with).
             green_lanes = sorted(
-                {lane for lane, ch in zip(lanes, state) if ch in safety.GREEN_CHARS}
+                {lane for lane, ch in zip(lanes, state)
+                 if ch in safety.GREEN_CHARS and not lane.startswith(":")}
             )
             if green_lanes and "y" not in state:
                 self.approaches[idx] = (state, green_lanes)

@@ -17,6 +17,8 @@ logs/*.log
 logs/*.csv
 
 !network/.gitkeep
+# Hand-written Kathmandu vehicle-type definitions (NOT generated)
+!network/kathmandu.vtypes.xml
 !data/.gitkeep
 !models/.gitkeep
 !logs/.gitkeep
