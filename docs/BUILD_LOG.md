@@ -137,3 +137,34 @@ check results, and anything the user must verify or fix.
   junction auto-discovery from TLS phases, safe serve loop, fail-safe to FIXED
   on decision errors.
 - Tests: pending (next step).
+
+## Phase 8 — realism: mixed traffic, pedestrians, real neighbourhood ✅ verified
+
+- **Kathmandu vehicle mix** (`network/kathmandu.vtypes.xml`,
+  vTypeDistribution): 45% motorbikes, 30% cars, 10% microbuses, 8% trucks,
+  7% buses — realistic sizes, accel profiles, and colors. Route generation
+  draws every trip from this mix; verified live shares on the road.
+- **Pedestrians**: network rebuilt with `--sidewalks.guess
+  --crossings.guess` (337 zebra crossings); 1800 walking persons generated;
+  verified 100+ pedestrians active in-sim. The forced TLS at node
+  2002197701 survives the rebuild; controller discovery now skips
+  internal/crossing lanes so pedestrian-only phases never become vehicle
+  approaches. The junction now exposes 8 vehicle phases (straight + turn).
+- **Real neighbourhood**: polyconvert extracts 1704 real building/landuse
+  polygons + 89 POIs from the same OSM extract; sumo-gui uses the
+  "real world" scheme; the dashboard junction view draws the building
+  footprints and the actual named places (temple, club, shops around
+  Kalanki), vehicles styled by type, pedestrians as dots.
+- **Approach names**: mode/emergency selectors now label approaches by real
+  street name + compass direction ("1 · Tribhuvan Rajpath (SW)") and adapt
+  to the discovered phase count.
+- **Per-vehicle tracking**: follow any vehicle live — type icon, speed,
+  accumulated wait, current street, red ring on the map; resets gracefully
+  when the vehicle finishes its trip. Verified with streamlit AppTest
+  against a live SUMO run.
+- **ML retrained on the mix**: 438 rows, RandomForest R² 0.576 / MAE 2.7 s
+  (was 0.512 / 6.4 s).
+- **New headline (8-phase junction, 600 s peak): adaptive+ML cuts average
+  wait 96.8% (296 → 9.4 s/cycle) and lifts throughput 281 → 364** — the
+  fixed timer wastes green on empty turn phases; adaptive skips them.
+- 46 tests green throughout; every increment committed + pushed.

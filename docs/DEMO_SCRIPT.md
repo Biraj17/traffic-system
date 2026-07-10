@@ -16,10 +16,12 @@ pytest -q                      # show the suite: 46 passing
 sumo-gui -c network/kathmandu.sumocfg
 ```
 
-**Say:** "This is Kalanki junction in Kathmandu — real road geometry imported
-from OpenStreetMap, not a toy grid. The traffic demand is simulated with
-peak and off-peak profiles." Press ▶ in the GUI, let vehicles flow ~20 s,
-zoom to the central junction, close it.
+**Say:** "This is Kalanki junction in Kathmandu — real road geometry AND the
+real buildings around it, imported from OpenStreetMap, not a toy grid. The
+traffic is a realistic Kathmandu mix — 45% motorbikes, cars, microbuses,
+buses, trucks — plus pedestrians on sidewalks and zebra crossings." Press ▶
+in the GUI, let vehicles flow ~20 s, zoom to the central junction (note the
+different vehicle shapes and people crossing), close it.
 
 ## 2. Adaptive control live (60 s)
 
@@ -42,27 +44,36 @@ streamlit run dashboard/app.py
 1. Click **Start simulation** — tiles and charts come alive.
 2. Point at the **green-time chart**: "each dot is one signal decision —
    watch the duration track demand."
-3. Switch mode to **Fixed timer**, then back to **Automatic** — "the operator
-   can override the AI at any time."
-4. Pick an approach and hit **🚨 ACTIVATE** — "one click gives an ambulance a
+3. Point at the **live map**: "real buildings and place names around
+   Kalanki, motorbikes/cars/buses/trucks as differently sized arrows,
+   pedestrians as purple dots." Pick a vehicle in **Track a vehicle** —
+   "we can follow any single vehicle: its speed, how long it has waited,
+   which street it is on."
+4. Switch mode to **Fixed timer**, then back to **Automatic** — "the operator
+   can override the AI at any time." Note the approaches are named by their
+   real streets (Tribhuvan Rajpath).
+5. Pick an approach and hit **🚨 ACTIVATE** — "one click gives an ambulance a
    green corridor; everything else goes red." Then **Clear** — "and it
    restores exactly the state it interrupted."
-5. Click **Stop simulation**, then **Run comparison**.
+6. Click **Stop simulation**, then **Run comparison**.
 
 ## 4. The money shot (45 s)
 
 When the comparison finishes, point at the headline:
 
-**"Same demand, same junction: the fixed timer averages ~61 s of junction
-wait per cycle; our adaptive system averages ~17 s — a ~73% reduction —
-with equal throughput."**
+**"Same demand, same junction: the fixed timer averages ~296 s of junction
+wait per cycle; our adaptive system averages ~9 s — a ~97% reduction — and
+moves 30% more vehicles (281 → 364). The real Kalanki junction has 8 signal
+phases including turn phases; a fixed timer wastes green on empty ones,
+the adaptive system skips them."**
 
 ## 5. Close (30 s)
 
-**Say:** "The ML model is a Random Forest trained on 389 control cycles from
-ten simulated demand scenarios (R² 0.51, mean error ~6 s). And the design is
-sensor-ready: one clearly marked function in `sumo_env.py` is where a real
-camera feed would plug in — nothing else changes."
+**Say:** "The ML model is a Random Forest trained on 438 control cycles from
+ten simulated demand scenarios with the full Kathmandu vehicle mix (R² 0.58,
+mean error ~2.7 s). And the design is sensor-ready: one clearly marked
+function in `sumo_env.py` is where a real camera feed would plug in —
+nothing else changes."
 
 ## If something breaks live
 

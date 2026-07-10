@@ -7,8 +7,10 @@ A fixed timer gives every approach the same green (25 s here) in strict
 rotation regardless of demand — empty lanes waste green while queued lanes
 overflow. Adaptive control measures each approach every cycle (vehicle count
 + accumulated waiting time) and allocates green proportional to demand. On
-identical peak demand our adaptive mode cut average junction wait ~73%
-versus the fixed baseline at equal throughput.
+identical peak demand at the real 8-phase Kalanki junction, our adaptive
+mode cut average junction wait ~97% (296 → 9 s/cycle) and raised throughput
+281 → 364 — the fixed timer wastes whole green slots on empty turn phases,
+the adaptive controller skips them.
 
 **2. How is green time computed?**
 Two estimates blended. Rule: `green = vehicle_count × 2 s/vehicle`, clamped
@@ -25,11 +27,13 @@ longest-waiting approach is served next regardless of its count. This
 guarantees a quiet side road is never starved by a busy main road.
 
 **4. What is real and what is simulated?**
-Real: the road geometry — Kalanki junction imported from OpenStreetMap, the
-same data behind most map apps. Simulated: the traffic demand, generated
-with calibrated peak/off-peak profiles (no free live feed of Kathmandu
-traffic exists). The professional literature frames this the same way:
-simulation now, sensor-ready for deployment.
+Real: the road geometry, sidewalks/crossings, building footprints, and named
+places — all of Kalanki imported from OpenStreetMap, the same data behind
+most map apps. Simulated: the traffic itself, but calibrated to reality —
+the vehicle mix matches Kathmandu valley shares (45% motorbikes, 30% cars,
+plus microbuses/buses/trucks with true sizes and acceleration), with
+pedestrians walking and crossing. No free live feed of Kathmandu traffic
+exists; the design is sensor-ready for deployment.
 
 **5. How does emergency override and restore work?**
 On trigger the controller snapshots the running mode and the exact signal
@@ -42,10 +46,10 @@ Automatic; re-triggering is idempotent (the original snapshot is kept).
 ## Second ring
 
 **Why Random Forest?**
-Tabular data, small dataset (389 rows), non-linear interactions between
+Tabular data, small dataset (438 rows), non-linear interactions between
 count/wait/growth-rate, no GPU, and interpretable feature importances. It
-beat LinearRegression and a single DecisionTree on held-out data (R² 0.512,
-MAE 6.4 s). Deep learning would be unjustifiable at this data size.
+beat LinearRegression and a single DecisionTree on held-out data (R² 0.576,
+MAE 2.7 s). Deep learning would be unjustifiable at this data size.
 
 **Where does the training label come from?**
 For each control cycle we measure the discharge rate actually observed
@@ -82,8 +86,24 @@ only reads controller memory and sets request flags; emergency requests are
 queued and applied at the controller's next decision point, keeping all
 TraCI traffic single-threaded.
 
+**How are pedestrians handled?**
+The network is rebuilt with guessed sidewalks and zebra crossings (337 at/
+around Kalanki); 1800 persons walk and cross during a run. Crossings are
+signal links inside the same TLS state strings, so they get their walk
+signal within the compatible vehicle phases netconvert paired them with.
+The controller's approach discovery skips pedestrian-only phases so a
+crossing never gets treated as a vehicle approach.
+
+**Why did the wait reduction jump from ~73% to ~97%?**
+The realistic rebuild exposed the junction's true 8 signal phases (straight
++ protected turns) instead of 4. A fixed timer must give each of the 8
+phases an equal 25 s slot — 240 s cycles with green burned on empty turn
+phases — while the adaptive controller simply skips what is empty. Bigger,
+more realistic junction → bigger advantage for adaptive control.
+
 **Limitations (be honest, it scores points)**
-Simulated demand, one junction (no corridor coordination), pedestrians not
-modeled, the ML dataset is modest (R² 0.51 — more episodes would improve
-it), and Kathmandu's mixed traffic (motorbikes weaving) is only approximated
-by SUMO's lane-based model.
+Simulated demand (though the mix is calibrated to Kathmandu shares), one
+junction (no corridor coordination), the ML dataset is modest (438 rows —
+more episodes would improve it), and motorbike weaving between lanes is only
+approximated by SUMO's lane-based model (SUMO's sublane model is a
+documented future refinement).
