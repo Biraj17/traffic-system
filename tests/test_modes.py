@@ -72,6 +72,15 @@ def test_approach_signals_reports_green_yellow_red(fake_env):
     assert set(ctl.approach_signals().values()) == {"red"}
 
 
+def test_run_with_zero_steps_means_run_until_stopped(fake_env):
+    # max_steps=0 must mean "run forever" (not "exit immediately"), and the
+    # stop flag must still end the loop.
+    ctl = make_controller(fake_env)
+    ctl.stop_requested = True
+    ctl.run(max_steps=0)  # returns because of the stop flag, not the horizon
+    assert fake_env.closed
+
+
 # -- priority & switching -----------------------------------------------------------
 
 def test_priority_order_emergency_highest():

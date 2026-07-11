@@ -89,6 +89,7 @@ class Controller:
 
         lanes = self.env.get_controlled_lanes(self.tls_id)
         idx = 0
+        seen: set[tuple[str, ...]] = set()
         for state in self.env.get_phase_states(self.tls_id):
             # Internal lanes (":junction_c0_0" etc.) are pedestrian crossings /
             # junction interiors — approaches are real road lanes only, and
@@ -98,7 +99,11 @@ class Controller:
                 {lane for lane, ch in zip(lanes, state)
                  if ch in safety.GREEN_CHARS and not lane.startswith(":")}
             )
-            if green_lanes and "y" not in state:
+            # Two phases serving the same road lanes (e.g. straight vs turn
+            # arrows) are one approach to the operator — keep the first.
+            key = tuple(green_lanes)
+            if green_lanes and "y" not in state and key not in seen:
+                seen.add(key)
                 self.approaches[idx] = (state, green_lanes)
                 idx += 1
         if not self.approaches:
@@ -269,11 +274,14 @@ class Controller:
     # -- main loop -----------------------------------------------------------------
 
     def run(self, max_steps: int = 3600) -> None:
-        """Control the junction until `max_steps` sim seconds have elapsed.
+        """Control the junction until `max_steps` sim seconds have elapsed
+        (max_steps <= 0 means run until stopped / the GUI window is closed).
 
         Any TraCI/decision error flips the controller to FIXED mode (fail
         safe) rather than crashing the simulation, per CLAUDE.md.
         """
+        if max_steps <= 0:
+            max_steps = float("inf")
         self.discover_junction()
         try:
             while self.env.sim_time() < max_steps and not self.stop_requested:
@@ -320,7 +328,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the traffic controller.")
     parser.add_argument("--mode", choices=["auto", "fixed"], default="auto")
     parser.add_argument("--gui", action="store_true", help="run with sumo-gui")
-    parser.add_argument("--steps", type=int, default=600, help="sim seconds to run")
+    parser.add_argument("--steps", type=int, default=0,
+                        help="sim seconds to run (0 = keep running until the "
+                             "SUMO window is closed or the process is stopped)")
     args = parser.parse_args()
 
     ml_predict = None
@@ -343,7 +353,7 @@ def main() -> None:
             print("[controller] SUMO closed — exiting cleanly.")
             return
         raise
-    print(f"Done: {len(ctl.metrics_log)} control cycles in {args.steps}s sim time.")
+    print(f"Done: {len(ctl.metrics_log)} control cycles.")
 
 
 if __name__ == "__main__":
