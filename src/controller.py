@@ -108,6 +108,29 @@ class Controller:
             waits[i] = sum(self.env.get_lane_waiting_time(l) for l in lanes)
         return counts, waits
 
+    def approach_signals(self) -> dict[int, str]:
+        """Current signal color per approach: 'green', 'yellow' or 'red'.
+
+        Derived from the last TLS state captured on the control thread (the
+        `live` snapshot), so the dashboard can render a signal panel without
+        ever touching TraCI. Empty until the first live capture.
+        """
+        if not self.live or not self.approaches:
+            return {}
+        state = self.live["tls_state"]
+        colors: dict[int, str] = {}
+        for i, (phase, _) in self.approaches.items():
+            links = [k for k, ch in enumerate(phase)
+                     if ch in safety.GREEN_CHARS and k < len(state)]
+            chars = {state[k] for k in links}
+            if chars & safety.GREEN_CHARS:
+                colors[i] = "green"
+            elif "y" in chars:
+                colors[i] = "yellow"
+            else:
+                colors[i] = "red"
+        return colors
+
     # -- dashboard-facing commands ---------------------------------------------
 
     def set_mode(self, mode: Mode, manual_target: int | None = None) -> None:

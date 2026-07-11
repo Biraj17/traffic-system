@@ -55,6 +55,23 @@ def test_manual_mode_in_controller(fake_env):
     assert ctl.decide()[0] == 3
 
 
+# -- live signal colors (dashboard panel) --------------------------------------
+
+def test_approach_signals_empty_before_first_live_capture(fake_env):
+    ctl = make_controller(fake_env)
+    assert ctl.approach_signals() == {}
+
+
+def test_approach_signals_reports_green_yellow_red(fake_env):
+    ctl = make_controller(fake_env)
+    ctl.live = {"tls_state": "Grrr", "vehicles": [], "persons": [], "time": 0.0}
+    assert ctl.approach_signals() == {0: "green", 1: "red", 2: "red", 3: "red"}
+    ctl.live["tls_state"] = "yrrr"  # mid-transition: old green now yellow
+    assert ctl.approach_signals()[0] == "yellow"
+    ctl.live["tls_state"] = "rrrr"  # all-red clearance
+    assert set(ctl.approach_signals().values()) == {"red"}
+
+
 # -- priority & switching -----------------------------------------------------------
 
 def test_priority_order_emergency_highest():

@@ -35,6 +35,10 @@ INK_MUTED = "#898781"
 GRID = "#e1e0d9"
 SURFACE = "#fcfcfb"
 
+MODE_AUTO_LABEL = "Automatic (adaptive + ML)"
+MODE_FIXED_LABEL = "Fixed timer"
+MODE_MANUAL_LABEL = "Manual"
+
 @st.cache_resource
 def junction_geo() -> junction_view.JunctionGeometry | None:
     """Static junction geometry (roads, buildings, street names); loaded once."""
@@ -127,6 +131,15 @@ def sim_running() -> bool:
 
 st.set_page_config(page_title="Kalanki Smart Traffic Control", page_icon="🚦",
                    layout="wide")
+
+# The traffic-light panel renders after the sidebar, so its buttons cannot
+# write the sidebar widgets' keys directly (Streamlit forbids writing a key
+# once its widget is instantiated). They stage values here instead, applied
+# at the top of the next full run — before the sidebar widgets exist.
+if "pending_mode" in st.session_state:
+    st.session_state.mode_choice = st.session_state.pop("pending_mode")
+if "pending_manual" in st.session_state:
+    st.session_state.manual_choice = st.session_state.pop("pending_manual")
 st.title("🚦 Smart Traffic Control — Kalanki, Kathmandu")
 st.caption("Adaptive AI signal control on real OpenStreetMap geometry. "
            "Demand is simulated (sensor-ready for real deployment).")
@@ -146,34 +159,43 @@ with st.sidebar:
     ctl: Controller | None = st.session_state.get("ctl")
 
     st.header("Mode")
+    # Both widgets are keyed so the traffic-light panel's "give green" buttons
+    # can drive them (the sidebar re-applies its value every rerun, so an
+    # unkeyed radio would instantly override a panel click).
     mode_choice = st.radio(
         "Operating mode",
-        ["Automatic (adaptive + ML)", "Fixed timer", "Manual"],
+        [MODE_AUTO_LABEL, MODE_FIXED_LABEL, MODE_MANUAL_LABEL],
+        key="mode_choice",
         disabled=not sim_running(),
     )
+    # Selectboxes take pre-built label strings, not ints + format_func:
+    # the labels are what the panel buttons write into session state, and
+    # streamlit's AppTest cannot round-trip format_func widgets.
+    approach_labels = [approach_label(i) for i in range(approach_count())]
     manual_choice = None
-    if mode_choice == "Manual":
-        manual_choice = st.selectbox(
+    if mode_choice == MODE_MANUAL_LABEL:
+        manual_label = st.selectbox(
             "Green approach",
-            options=list(range(approach_count())),
-            format_func=approach_label,
+            options=approach_labels,
+            key="manual_choice",
             disabled=not sim_running(),
         )
+        manual_choice = approach_labels.index(manual_label)
     if sim_running() and ctl is not None and ctl.mode != Mode.EMERGENCY:
-        if mode_choice.startswith("Automatic"):
+        if mode_choice == MODE_AUTO_LABEL:
             ctl.set_mode(Mode.AUTOMATIC)
-        elif mode_choice.startswith("Fixed"):
+        elif mode_choice == MODE_FIXED_LABEL:
             ctl.set_mode(Mode.FIXED)
         else:
             ctl.set_mode(Mode.MANUAL, manual_target=manual_choice)
 
     st.header("Emergency")
-    em_approach = st.selectbox(
+    em_label = st.selectbox(
         "Corridor approach",
-        options=list(range(approach_count())),
-        format_func=approach_label,
+        options=approach_labels,
         disabled=not sim_running(),
     )
+    em_approach = approach_labels.index(em_label)
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("🚨 ACTIVATE", type="primary", width="stretch",
@@ -182,6 +204,57 @@ with st.sidebar:
     with col_b:
         if st.button("Clear", width="stretch", disabled=not sim_running()):
             ctl.clear_emergency()
+
+
+def signal_panel(ctl: Controller, latest: dict) -> None:
+    """Per-approach traffic-light panel: live color + a 'give green' button.
+
+    Buttons switch the controller to Manual with that approach as target and
+    sync the sidebar widgets so the two controls never fight. The safety gate
+    (green -> yellow -> all-red) stays in the path — the button only sets the
+    target, the control thread performs the transition.
+    """
+    st.markdown("#### 🚦 Traffic lights — Kalanki approaches")
+    dot = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+    signals = ctl.approach_signals()
+    counts = latest.get("counts", {})
+    emergency = ctl.mode == Mode.EMERGENCY
+
+    header = st.columns([3, 1])
+    with header[0]:
+        if emergency:
+            st.caption("Emergency corridor active — direct control suspended.")
+        elif ctl.mode == Mode.MANUAL:
+            held = ctl.manual_target if ctl.manual_target is not None else 0
+            st.caption(f"MANUAL — holding {approach_label(held)} green. Every "
+                       "switch still passes yellow + all-red.")
+        else:
+            st.caption("Click any approach to hold it green (switches to Manual; "
+                       "yellow + all-red safety phases always apply).")
+    with header[1]:
+        if st.button("🤖 Resume automatic", width="stretch",
+                     disabled=emergency or ctl.mode != Mode.MANUAL):
+            st.session_state.pending_mode = MODE_AUTO_LABEL
+            ctl.set_mode(Mode.AUTOMATIC)
+            st.rerun(scope="app")
+
+    idxs = sorted(ctl.approaches)
+    per_row = 4
+    for start in range(0, len(idxs), per_row):
+        cols = st.columns(per_row)
+        for col, i in zip(cols, idxs[start:start + per_row]):
+            with col:
+                color = signals.get(i, "red")
+                held = ctl.mode == Mode.MANUAL and ctl.manual_target == i
+                st.markdown(f"{dot[color]} **{approach_label(i)}**"
+                            + (" · _held_" if held else ""))
+                st.caption(f"{counts.get(i, 0)} vehicles waiting")
+                if st.button("Give green", key=f"give_green_{i}",
+                             width="stretch", disabled=emergency or held):
+                    st.session_state.pending_mode = MODE_MANUAL_LABEL
+                    st.session_state.pending_manual = approach_label(i)
+                    ctl.set_mode(Mode.MANUAL, manual_target=i)
+                    st.rerun(scope="app")
 
 
 # ---- live view (auto-refreshing fragment) ----
@@ -206,6 +279,8 @@ def live_view() -> None:
     t2.metric("Vehicles in network", latest["active_vehicles"])
     t3.metric("Throughput (arrived)", k["throughput"])
     t4.metric("Avg junction wait / cycle", f"{k['avg_wait']:.0f} s")
+
+    signal_panel(ctl, latest)
 
     # Animated top-down junction view (Phase 7): real lane geometry with
     # live vehicles and per-lane signal colors from the control thread.
