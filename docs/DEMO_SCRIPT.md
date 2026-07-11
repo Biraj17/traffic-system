@@ -68,19 +68,20 @@ streamlit run dashboard/app.py
 
 When the comparison finishes, point at the headline:
 
-**"Same demand, same junction: the fixed timer averages ~354 s of junction
-wait per cycle; our adaptive system averages ~10 s — a 97.2% reduction,
-consistent across 5 random seeds (96.3–98.1%) — at the same throughput.
-The real Kalanki junction has 8 signal phases including turn phases; a
-fixed timer wastes green on empty ones, the adaptive system skips
-them."** (For the seed table live, use **Run 5-seed comparison** — it
+**"Same demand, same junction: this is the real Kalanki Chowk — the Ring
+Road flows under it through the actual underpass while the signal controls
+the whole surface interchange. The fixed timer averages ~1360 s of
+accumulated junction wait per cycle; our adaptive system averages ~280 s —
+an 80% reduction, consistent across 5 random seeds (72–84%) — and it moves
+more vehicles on every seed. A fixed timer wastes green on empty
+approaches; the adaptive system skips them."** (For the seed table live, use **Run 5-seed comparison** — it
 takes a few minutes, so run it before the demo or show `logs/`.)
 
 ## 5. Close (30 s)
 
-**Say:** "The ML model is a Random Forest trained on 438 control cycles from
-ten simulated demand scenarios with the full Kathmandu vehicle mix (R² 0.58,
-mean error ~2.7 s). And the design is sensor-ready: one clearly marked
+**Say:** "The ML model is a Random Forest trained on 402 control cycles from
+ten simulated demand scenarios with the full Kathmandu vehicle mix (R² 0.78,
+mean error ~4.4 s). And the design is sensor-ready: one clearly marked
 function in `sumo_env.py` is where a real camera feed would plug in —
 nothing else changes."
 

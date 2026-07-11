@@ -3,25 +3,31 @@
 An adaptive, AI-driven traffic signal control system simulated on a real
 Kathmandu intersection (default: **Kalanki**), with an operator dashboard.
 
-**Headline result:** on identical peak demand at the real 8-phase Kalanki
-junction (sublane motorbike weaving on), adaptive+ML control cuts average
-junction wait by **97.2% ± 0.7 (range 96.3–98.1% across 5 random seeds)** —
-mean wait 354 → 10 s/cycle at unchanged throughput — vs a classic fixed
-timer, which wastes green time on empty turn phases.
+**Headline result:** on identical peak demand at the true Kalanki Chowk —
+Ring Road × Tribhuvan Rajpath, modeled with its real underpass (Ring Road
+flows beneath, uncontrolled) and a joint signal across the whole surface
+interchange — adaptive+ML control cuts average junction wait by
+**80% ± 4 (range 72–84% across 5 random seeds)**, mean wait
+1363 → 276 s/cycle, and moves **more vehicles on every seed**
+(mean throughput 150 → 161) vs a classic fixed timer.
 
 ![Live dashboard junction view — ambulance corridor active](docs/img/dashboard-junction.png)
-*Dashboard live map during an ambulance dispatch: the corridor approach is
-green, every other approach red, the ambulance (large red arrow) inbound.
-Buildings and place names are real OSM data.*
+*Dashboard live map during an ambulance dispatch at Kalanki Chowk: the
+corridor is green, every other approach red, the ambulance (red arrow) at
+the junction. Buildings and place names are real OSM data.*
 
 ![sumo-gui zoomed on the Kalanki signals](docs/img/sumo-gui-kalanki.png)
-*sumo-gui opens centered on the junction with readable signal stop bars.*
+*sumo-gui opens centered on the chowk: named streets, the Ring Road
+underpass box, zebra crossings, and readable signal stop bars.*
 
 ## Realistic by construction
 
 - **Real roads & buildings** — geometry, building footprints, and named
   places (the actual temple, shops, and clubs around Kalanki) all come from
-  OpenStreetMap.
+  OpenStreetMap, cross-checked against Google Maps.
+- **The real interchange** — the signal sits on the actual Kalanki Chowk
+  surface crossing while the Kathmandu Ring Road dives beneath it through
+  the real underpass, exactly like the built structure.
 - **Real traffic mix** — 45% motorbikes, 30% cars, plus microbuses, buses,
   and trucks, with true sizes and driving profiles (Kathmandu valley shares).
 - **Pedestrians** — 1800 people walking on guessed sidewalks and zebra
@@ -29,8 +35,9 @@ Buildings and place names are real OSM data.*
 - **Motorbike weaving** — SUMO's sublane model (0.4 m lateral resolution):
   bikes filter between queued cars to the stop line, like real Kalanki.
 - **Rush-hour rhythm** — a "Full day" scenario compresses dawn → school
-  rush → office peak → lull → evening into 30 minutes; watch junction
-  pressure rise ~1000× at peak while adaptive control keeps it flowing.
+  rush → office peak → lull → evening into 30 minutes; junction wait rises
+  ~14 → 540 s at rush and recovers to ~50 s by evening under adaptive
+  control, with green times tracking the curve.
 - **Live tracking** — follow any vehicle on the dashboard map: type, speed,
   accumulated wait, current street.
 

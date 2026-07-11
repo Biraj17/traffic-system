@@ -7,13 +7,14 @@ A fixed timer gives every approach the same green (25 s here) in strict
 rotation regardless of demand — empty lanes waste green while queued lanes
 overflow. Adaptive control measures each approach every cycle (vehicle count
 + accumulated waiting time) and allocates green proportional to demand. On
-identical peak demand at the real 8-phase Kalanki junction (with sublane
-motorbike weaving on), our adaptive mode cut average junction wait
-97.2% ± 0.7 (96.3–98.1% across 5 random seeds; mean 354 → 10 s/cycle) at
-essentially unchanged throughput (330 → 326 mean) — the fixed timer wastes
-whole green slots on empty turn phases, the adaptive controller skips
-them. The spread across seeds shows it is not one lucky run: the per-seed
-table is in the dashboard and logs/.
+identical peak demand at the true Kalanki Chowk — the joint signal over
+the whole surface interchange, Ring Road underpass flowing beneath — our
+adaptive mode cut average junction wait 80% ± 4 (72–84% across 5 random
+seeds; mean 1363 → 276 s/cycle) and moved more vehicles on every seed
+(mean throughput 150 → 161) — the fixed timer wastes whole green slots on
+empty approaches, the adaptive controller skips them. The spread across
+seeds shows it is not one lucky run: the per-seed table is in the
+dashboard and logs/.
 
 **2. How is green time computed?**
 Two estimates blended. Rule: `green = vehicle_count × 2 s/vehicle`, clamped
@@ -49,10 +50,10 @@ Automatic; re-triggering is idempotent (the original snapshot is kept).
 ## Second ring
 
 **Why Random Forest?**
-Tabular data, small dataset (438 rows), non-linear interactions between
+Tabular data, small dataset (402 rows), non-linear interactions between
 count/wait/growth-rate, no GPU, and interpretable feature importances. It
-beat LinearRegression and a single DecisionTree on held-out data (R² 0.576,
-MAE 2.7 s). Deep learning would be unjustifiable at this data size.
+beat LinearRegression and a single DecisionTree on held-out data (R² 0.78,
+MAE 4.4 s). Deep learning would be unjustifiable at this data size.
 
 **Where does the training label come from?**
 For each control cycle we measure the discharge rate actually observed
@@ -91,22 +92,23 @@ TraCI traffic single-threaded.
 
 **How are pedestrians handled?**
 The network is rebuilt with guessed sidewalks and zebra crossings (337 at/
-around Kalanki); 1800 persons walk and cross during a run. Crossings are
+around Kalanki); ~1200 persons walk and cross during a run. Crossings are
 signal links inside the same TLS state strings, so they get their walk
 signal within the compatible vehicle phases netconvert paired them with.
 The controller's approach discovery skips pedestrian-only phases so a
 crossing never gets treated as a vehicle approach.
 
-**Why did the wait reduction jump from ~73% to ~97%?**
-The realistic rebuild exposed the junction's true 8 signal phases (straight
-+ protected turns) instead of 4. A fixed timer must give each of the 8
-phases an equal 25 s slot — 240 s cycles with green burned on empty turn
-phases — while the adaptive controller simply skips what is empty. Bigger,
-more realistic junction → bigger advantage for adaptive control.
+**Earlier drafts claimed ~97% — why is the final headline 80%?**
+Because the junction got real. Early numbers came from a simpler junction
+500 m from the actual chowk; rebuilding on the true Kalanki Chowk (a joint
+signal across the whole surface interchange, the Ring Road underpass
+underneath, calibrated demand, pedestrians) makes the problem much harder
+and the baseline less absurd. 80% ± 4 on the honest junction — with
+throughput UP on every seed — is the defensible number.
 
 **Limitations (be honest, it scores points)**
 Simulated demand (though the mix is calibrated to Kathmandu shares), one
-junction (no corridor coordination), and the ML dataset is modest (438
+junction (no corridor coordination), and the ML dataset is modest (402
 rows — more episodes would improve it). Motorbike weaving IS modeled:
 SUMO's sublane model runs with 0.4 m lateral resolution, and motorbikes
 (latAlignment="arbitrary", tight lateral gaps, high lcPushy/lcSublane)

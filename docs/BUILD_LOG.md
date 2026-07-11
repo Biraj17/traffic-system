@@ -206,3 +206,37 @@ check results, and anything the user must verify or fix.
 - README gained real screenshots (docs/img/): the live dashboard map mid
   ambulance-dispatch and the zoomed sumo-gui view.
 - 52 tests green; every increment committed + pushed.
+
+## Phase 10 — the real Kalanki Chowk ✅ verified
+
+Triggered by Biraj's Google Maps cross-check: the signalized junction was
+a Rajpath junction ~500 m west of the actual chowk.
+
+- **Correct junction**: build picks the node where the most distinct named
+  roads meet (Tribhuvan Rajpath × Ring Road × Kalanki), then signalizes
+  the chowk's whole surface web (10 nodes) as one joint TLS. Tunnel nodes
+  are detected from OSM `tunnel=yes` ways and excluded — the **real
+  Kalanki underpass** carries the Ring Road beneath the signal,
+  uncontrolled, exactly like the built structure. (Merging the web into
+  one node via <join> was tried and rejected: lost approaches, worse
+  waits.) 8 operator approaches with real street names.
+- **Auto-shutdown fixed**: demand now runs to 7200 s and `--steps 0`
+  (new CLI default) runs until the window closes.
+- **Names in sumo-gui**: "Kalanki Chowk" label at the junction (POI id
+  carries the text — poiName renders ids; NBSP for spaces; Devanagari
+  dropped, X11 fonts can't shape it) + native streetName rendering along
+  every road; decorative OSM POI numbers stripped from the poly file.
+- **Stability work (measured, iteratively)**: sustained heavy demand or
+  one pedestrian wedged on a crossing made waits grow without bound.
+  Fixes: pedestrian jamtime 20 s, ignore-junction-blocker 30 s, teleport
+  180 s, pedestrian demand at period 6.0, peak calibrated to 2.8 s
+  insertions (stable 30+ min: waits 283 → 710 → 798 by third), day curve
+  9/4/2.4/5/9 (wait 14 → 542 at rush → 52 by evening).
+- **ML retrained** for the new junction's demand range (episodes 1.6–10 s):
+  402 rows, RandomForest R² 0.777 / MAE 4.4 s (was 0.576 / 2.7).
+- **New headline (5 seeds, 600 s peak): adaptive+ML cuts average wait
+  80% ± 4 (72–84%), mean 1363 → 276 s/cycle, throughput up on every seed
+  (mean 150 → 161).** Honest note: smaller percentage than the old
+  wrong-junction number — the junction is real now and the story is
+  stronger for it.
+- README screenshots re-shot on the real chowk; 53 tests green.
