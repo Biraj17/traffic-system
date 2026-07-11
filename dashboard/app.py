@@ -403,6 +403,43 @@ def live_view() -> None:
 
 live_view()
 
+# ---- inside the ML model ----
+@st.cache_resource
+def model_importances() -> "pd.Series | None":
+    """Feature importances of the trained Random Forest (None if no model)."""
+    try:
+        import joblib
+
+        model = joblib.load(config.MODEL_FILE)
+        return pd.Series(model.feature_importances_,
+                         index=list(model.feature_names_in_))
+    except Exception:
+        return None
+
+
+with st.expander("🧠 Why does the AI choose these green times? (model insight)"):
+    imp = model_importances()
+    if imp is None:
+        st.info("No trained model found — run `python src/ml/train_model.py`.")
+    else:
+        st.caption("Share of the Random Forest's decisions driven by each "
+                   "input, learned from simulated control cycles. Vehicle "
+                   "count dominates; accumulated waiting time is the "
+                   "fairness signal.")
+        imp = imp.sort_values()
+        fig = go.Figure(go.Bar(x=imp.values, y=list(imp.index),
+                               orientation="h", marker_color=C_ADAPTIVE,
+                               marker_line_width=0, width=0.55,
+                               text=[f"{v:.0%}" for v in imp.values],
+                               textposition="outside",
+                               textfont={"color": "#0b0b0b"}))
+        fig = base_layout(fig, "Random Forest feature importance", "")
+        fig.update_layout(xaxis={"title": "importance", "gridcolor": GRID,
+                                 "range": [0, float(imp.max()) * 1.25],
+                                 "tickformat": ".0%"},
+                          yaxis={"title": "", "gridcolor": GRID}, height=260)
+        st.plotly_chart(fig, width="stretch")
+
 # ---- baseline comparison (the headline) ----
 st.divider()
 st.subheader("Fixed-timer baseline vs Adaptive + ML")
