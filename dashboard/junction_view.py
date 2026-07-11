@@ -80,8 +80,14 @@ def load_geometry(tls_id: str | None = None) -> JunctionGeometry:
     else:
         tls = max(all_tls, key=lambda t: len(t.getConnections()))
 
-    node = net.getNode(tls.getID())
-    cx, cy = node.getCoord()
+    try:
+        cx, cy = net.getNode(tls.getID()).getCoord()
+    except KeyError:
+        # Joint TLS across several nodes (the Kalanki chowk web): its id is
+        # not a node id — center the view on the mean of its stop lines.
+        pts = [c[0].getShape()[-1] for c in tls.getConnections()]
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
 
     signal_lanes: dict[str, tuple[list[tuple[float, float]], list[int]]] = {}
     for in_lane, _out_lane, link_idx in tls.getConnections():

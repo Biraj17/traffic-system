@@ -31,3 +31,4 @@ logs/*.csv
 # randomTrips side artifacts
 trips.trips.xml
 *.trips.xml
+network/*.nod.xml

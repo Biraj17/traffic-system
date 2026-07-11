@@ -94,8 +94,11 @@ def fetch_osm_data(bbox: tuple[float, float, float, float], tools_dir: Path, pre
 def build_network(osm_file: Path, net_file: Path, tls_node: str | None = None) -> None:
     """Convert an OSM extract into a SUMO network, guessing traffic-light logic.
 
-    `tls_node`, when given, forces a signal at that junction id — needed for
-    Kathmandu, where junctions are rarely signal-tagged in OSM.
+    `tls_node`, when given, forces signals at those junction ids — needed for
+    Kathmandu, where junctions are rarely signal-tagged in OSM. (Merging the
+    chowk's node web into one junction via an explicit <join> was tried and
+    rejected: the merged monster junction lost approaches and performed worse
+    than a joint TLS across the separate nodes.)
     """
     cmd = [
         "netconvert",
@@ -117,15 +120,24 @@ def build_network(osm_file: Path, net_file: Path, tls_node: str | None = None) -
         "--crossings.guess",
     ]
     if tls_node:
-        cmd += ["--tls.set", tls_node]
+        # tls_node may be a comma-separated list (the surface web of a chowk);
+        # --tls.join with a wide join-dist fuses them into ONE joint signal
+        # program spanning every approach.
+        cmd += ["--tls.set", tls_node, "--tls.join-dist", "60"]
     print("Building network:", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
 
 def find_main_junction(net_file: Path) -> str:
-    """Return the id of the highest-degree junction nearest the network center.
+    """Return the id of the real main crossroads: the junction where the most
+    DISTINCT named roads meet (ties: degree, then closeness to the network
+    center).
 
-    Used as the signalized junction when OSM tags no signals in the area.
+    Counting street names — not just connected lanes — matters: at Kalanki
+    the genuine chowk (Tribhuvan Rajpath × Ring Road × Kalanki Rd, above the
+    Ring Road underpass) is a web of medium-degree nodes, while a plain
+    high-degree junction on a single road 500 m away would win a pure
+    degree contest and signalize the wrong place.
     """
     import sumolib
 
@@ -133,20 +145,73 @@ def find_main_junction(net_file: Path) -> str:
     xmin, ymin, xmax, ymax = net.getBoundary()
     cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
 
-    def score(node) -> tuple[int, float]:
+    def score(node) -> tuple[int, int, float]:
+        edges = list(node.getIncoming()) + list(node.getOutgoing())
+        streets = {e.getName() for e in edges if e.getName()}
         x, y = node.getCoord()
-        degree = len(node.getIncoming()) + len(node.getOutgoing())
-        return (degree, -(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5))
+        return (len(streets), len(edges), -(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5))
 
     best = max(net.getNodes(), key=score)
+    names = {e.getName() for e in list(best.getIncoming()) + list(best.getOutgoing())
+             if e.getName()}
+    print(f"Main junction: {best.getID()} at {best.getCoord()} — streets: {names}")
     return best.getID()
 
 
+def _tunnel_node_ids(osm_file: Path, net) -> set[str]:
+    """Net node ids belonging to tunnel ways (e.g. the Kalanki underpass).
+
+    These lie directly beneath the surface chowk and must never be
+    signalized — the whole point of the underpass is free flow.
+    """
+    tunnel_ways = set()
+    for _, el in ET.iterparse(str(osm_file)):
+        if el.tag == "way" and any(
+            t.get("k") == "tunnel" and t.get("v") != "no" for t in el.iter("tag")
+        ):
+            tunnel_ways.add(el.get("id"))
+        el.clear()
+    nodes: set[str] = set()
+    for edge in net.getEdges():
+        if edge.getID().lstrip("-").split("#")[0] in tunnel_ways:
+            nodes.add(edge.getFromNode().getID())
+            nodes.add(edge.getToNode().getID())
+    return nodes
+
+
+def surface_web_nodes(osm_file: Path, net_file: Path, main_id: str,
+                      radius_m: float = 45.0) -> list[str]:
+    """The main junction plus every surface node of its web within
+    `radius_m` (degree >= 3), excluding underpass/tunnel nodes.
+
+    Real chowks like Kalanki are mapped as several close nodes around the
+    underpass box; signalizing them together (joint TLS) is what makes the
+    signal control every approach instead of one corner.
+    """
+    import math
+
+    import sumolib
+
+    net = sumolib.net.readNet(str(net_file))
+    tunnel = _tunnel_node_ids(osm_file, net)
+    cx, cy = net.getNode(main_id).getCoord()
+    picked = []
+    for n in net.getNodes():
+        x, y = n.getCoord()
+        deg = len(n.getIncoming()) + len(n.getOutgoing())
+        if (math.hypot(x - cx, y - cy) <= radius_m and deg >= 3
+                and n.getID() not in tunnel):
+            picked.append(n.getID())
+    return picked
+
+
 def ensure_traffic_light(osm_file: Path, net_file: Path) -> None:
-    """Guarantee the network has at least one traffic light.
+    """Guarantee the network has a traffic light on the whole main chowk.
 
     If the first netconvert pass produced none (unsignalized OSM data), pick
-    the main central junction and rebuild with --tls.set on it.
+    the main crossroads, gather its surface node web (tunnel nodes excluded),
+    and rebuild with a joint TLS across all of it, so the signal controls
+    every approach of the chowk instead of one corner.
     """
     import sumolib
 
@@ -154,8 +219,10 @@ def ensure_traffic_light(osm_file: Path, net_file: Path) -> None:
     if net.getTrafficLights():
         return
     main_junction = find_main_junction(net_file)
-    print(f"No signals in OSM data; forcing a traffic light at junction {main_junction}")
-    build_network(osm_file, net_file, tls_node=main_junction)
+    web = surface_web_nodes(osm_file, net_file, main_junction)
+    print(f"No signals in OSM data; forcing a joint traffic light across "
+          f"{len(web)} surface nodes of junction {main_junction}: {web}")
+    build_network(osm_file, net_file, tls_node=",".join(web))
     net = sumolib.net.readNet(str(net_file))
     if not net.getTrafficLights():
         sys.exit("Failed to create a traffic light — inspect the network in netedit.")
@@ -210,8 +277,15 @@ def generate_routes(
     subprocess.run(cmd, check=True)
 
 
-def generate_pedestrians(net_file: Path, tools_dir: Path, route_file: Path, seed: int) -> None:
-    """Generate walking-person demand (uses the sidewalks/crossings in the net)."""
+def generate_pedestrians(net_file: Path, tools_dir: Path, route_file: Path, seed: int,
+                         end_sec: int = config.DEMAND_END_SEC,
+                         period: float = 6.0) -> None:
+    """Generate walking-person demand (uses the sidewalks/crossings in the net).
+
+    Default period 6.0 (~600 walkers/h): heavier flows progressively jam the
+    unsignalized crossings around the chowk — measured, vehicle waits then
+    grow without bound no matter the signal strategy.
+    """
     cmd = [
         sys.executable,
         str(tools_dir / "randomTrips.py"),
@@ -221,13 +295,17 @@ def generate_pedestrians(net_file: Path, tools_dir: Path, route_file: Path, seed
         str(route_file),
         "--pedestrians",
         "--period",
-        "2.0",
+        str(period),
         "--seed",
         str(seed),
         "--prefix",
         "ped_",
         "--max-distance",
         "600",
+        "-b",
+        "0",
+        "-e",
+        str(end_sec),
     ]
     print("Generating pedestrians:", " ".join(cmd))
     subprocess.run(cmd, check=True)
@@ -292,33 +370,80 @@ def extract_place_names(poly_file: Path, places_file: Path) -> None:
     places_file.write_text(json.dumps(places, ensure_ascii=False))
     print(f"Wrote {len(places)} named places to {places_file}")
 
+    # The <poi> dots have now served their purpose (name extraction above).
+    # Drop them from the poly file: sumo-gui's poiName setting renders every
+    # POI's id, and 89 raw OSM numbers around the junction are pure clutter —
+    # the only runtime POI is the junction label in kathmandu.labels.xml.
+    tree = ET.parse(poly_file)
+    root = tree.getroot()
+    removed = 0
+    for poi in list(root.findall("poi")):
+        root.remove(poi)
+        removed += 1
+    tree.write(poly_file, encoding="UTF-8", xml_declaration=True)
+    print(f"Stripped {removed} decorative POIs from {poly_file}")
+
+
+def write_labels(net_file: Path, labels_file: Path, tls_id: str) -> None:
+    """Write the junction-name label POI for sumo-gui.
+
+    sumo-gui's poiName setting renders the POI *id*, so the label text IS the
+    id — with non-breaking spaces (ids reject plain whitespace). The dot
+    itself is fully transparent; only the text shows. Street names need no
+    POIs: the view settings enable streetName rendering along the edges.
+    """
+    import sumolib
+
+    net = sumolib.net.readNet(str(net_file))
+    try:
+        cx, cy = net.getNode(tls_id).getCoord()
+    except Exception:
+        # Joined TLS: its id is not a node id — anchor on its stop lines.
+        pts = [c[0].getShape()[-1] for c in net.getTLS(tls_id).getConnections()]
+        cx = sum(p[0] for p in pts) / len(pts)
+        cy = sum(p[1] for p in pts) / len(pts)
+
+    label_id = config.JUNCTION_LABEL.replace(" ", "\u00a0")
+    labels_file.write_text(
+        "<additional>\n"
+        f'    <poi id="{label_id}" x="{cx:.2f}" y="{cy + 18:.2f}" '
+        'color="0,0,0,0" layer="12"/>\n'
+        "</additional>\n"
+    )
+    print(f"Wrote junction label '{config.JUNCTION_LABEL}' to {labels_file}")
+
 
 def write_gui_settings(view_file: Path, net_file: Path) -> None:
     """Write sumo-gui view settings: 'real world' scheme, camera opening
     zoomed on the signalized junction so the red/green stop bars are obvious."""
-    # Camera target = the busiest traffic-light junction (same rule the
-    # controller uses for discovery): most incoming lanes wins.
-    best = None  # (lane count, x, y)
+    # Camera target = center of the signalized junction. The chowk signal is
+    # a joint TLS across a web of nodes, so average every signalized node.
+    pts: list[tuple[float, float]] = []
     for _, el in ET.iterparse(str(net_file)):
         if el.tag == "junction" and el.get("type") == "traffic_light":
-            n = len(el.get("incLanes", "").split())
-            if best is None or n > best[0]:
-                best = (n, float(el.get("x")), float(el.get("y")))
+            pts.append((float(el.get("x")), float(el.get("y"))))
         el.clear()
-    x, y = (best[1], best[2]) if best else (0.0, 0.0)
+    x = sum(p[0] for p in pts) / len(pts) if pts else 0.0
+    y = sum(p[1] for p in pts) / len(pts) if pts else 0.0
 
     view_file.write_text(
         f"""<viewsettings>
     <!-- Start the camera right on the signalized junction, close enough that
-         the red/green signal bars at every stop line are clearly readable.
-         zoom=100 would show the whole network; 1600 is roughly a 100 m circle. -->
-    <viewport zoom="1600" x="{x:.2f}" y="{y:.2f}"/>
+         the red/green signal bars at every stop line are clearly readable but
+         wide enough for the whole chowk + street labels. zoom=100 would show
+         the whole network; 1100 is roughly a 150 m circle. -->
+    <viewport zoom="1100" x="{x:.2f}" y="{y:.2f}"/>
     <scheme name="real world">
         <!-- Slightly wider lanes so the colored link rules (the signal state
              bars painted across each lane at the stop line) stand out; keep
              realisticLinkRules off so bars use bright full red/green/yellow. -->
         <edges laneShowBorders="1" showLinkDecals="1" showLinkRules="1"
-               realisticLinkRules="0" widthExaggeration="1.4"/>
+               realisticLinkRules="0" widthExaggeration="1.4"
+               streetName_show="1" streetName_size="52.00"
+               streetName_color="0.15,0.15,0.15"/>
+        <!-- Render the junction label from kathmandu.labels.xml (the label
+             text is the POI id; the dot itself is transparent). -->
+        <pois poiName_show="1" poiName_size="70.00" poiName_color="0.05,0.05,0.05"/>
     </scheme>
     <delay value="60"/>
 </viewsettings>
@@ -335,13 +460,16 @@ def write_sumocfg(net_file: Path, route_files: list[Path], cfg_file: Path) -> No
     again here (doing so raises a duplicate-vType error in SUMO).
     """
     route_list = ",".join(str(r.name) for r in route_files)
+    additionals = config.POLY_FILE.name
+    if config.LABELS_FILE.exists():
+        additionals += f",{config.LABELS_FILE.name}"
     cfg_file.write_text(
         f"""<?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <input>
         <net-file value="{net_file.name}"/>
         <route-files value="{route_list}"/>
-        <additional-files value="{config.POLY_FILE.name}"/>
+        <additional-files value="{additionals}"/>
     </input>
     <time>
         <begin value="0"/>
@@ -380,11 +508,16 @@ def main() -> None:
 
     # Off-peak: sparser demand (longer period between trip insertions).
     generate_routes(
-        config.NET_FILE, tools_dir, config.ROUTE_FILE_OFFPEAK, period=3.0, seed=42, prefix="off_"
+        config.NET_FILE, tools_dir, config.ROUTE_FILE_OFFPEAK, period=3.0, seed=42,
+        prefix="off_", end_sec=config.DEMAND_END_SEC,
     )
-    # Peak: denser demand.
+    # Peak: denser demand. Calibrated to the real chowk junction: at 2.8 s
+    # between insertions the junction is visibly busy yet stable over 30+ min
+    # under adaptive control (1.6 and below gridlock every control strategy —
+    # measured, not guessed).
     generate_routes(
-        config.NET_FILE, tools_dir, config.ROUTE_FILE_PEAK, period=0.8, seed=7, prefix="pk_"
+        config.NET_FILE, tools_dir, config.ROUTE_FILE_PEAK, period=2.8, seed=7,
+        prefix="pk_", end_sec=config.DEMAND_END_SEC,
     )
     # A compressed "day": quiet -> school rush -> office peak -> lull -> quiet,
     # so green times visibly track the demand curve on the dashboard.
@@ -399,6 +532,14 @@ def main() -> None:
     generate_polygons(osm_file, config.NET_FILE, config.POLY_FILE)
     extract_place_names(config.POLY_FILE, config.PLACES_FILE)
     write_gui_settings(config.GUI_SETTINGS_FILE, config.NET_FILE)
+
+    # Junction + street name labels for sumo-gui (needs the signalized node).
+    import sumolib
+
+    tls_ids = [t.getID()
+               for t in sumolib.net.readNet(str(config.NET_FILE)).getTrafficLights()]
+    if tls_ids:
+        write_labels(config.NET_FILE, config.LABELS_FILE, tls_ids[0])
 
     # Default scenario runs peak demand + pedestrians; off-peak is for ML.
     write_sumocfg(

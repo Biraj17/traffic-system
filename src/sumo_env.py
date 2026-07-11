@@ -114,6 +114,15 @@ class SumoEnv:
             str(config.STEP_LENGTH_SEC),
             "--no-warnings",
             "--quit-on-end",
+            # Robustness at the chowk: without these, one pedestrian jammed on
+            # a crossing (or one blocked turner) can wedge the junction and
+            # waits grow without bound — measured on the real-chowk network.
+            "--pedestrian.striping.jamtime",
+            str(config.PED_JAMTIME_SEC),
+            "--ignore-junction-blocker",
+            str(config.IGNORE_BLOCKER_SEC),
+            "--time-to-teleport",
+            str(config.TIME_TO_TELEPORT_SEC),
         ]
         if self._seed is not None:
             args += ["--seed", str(self._seed)]

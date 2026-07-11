@@ -28,20 +28,21 @@ from src.controller import Controller, Mode
 from src.sumo_env import SumoEnv, ensure_sumo_home
 
 # (trip insertion period in seconds, random seed, episode sim seconds).
-# Period <= 0.5 saturates the junction (peak); >= 2.0 is quiet off-peak.
+# Calibrated to the real Kalanki Chowk junction: period <= 2.4 saturates it
+# (peak); >= 5.0 is quiet off-peak. (The pre-rebuild junction used 0.2-3.0.)
 EPISODES = [
-    (0.2, 1, 900),
-    (0.25, 7, 900),
-    (0.3, 2, 900),
-    (0.4, 8, 900),
-    (0.5, 3, 900),
-    (0.8, 4, 900),
-    (1.0, 9, 900),
-    (1.5, 5, 900),
-    (2.0, 10, 900),
-    (3.0, 6, 900),
+    (1.6, 1, 900),
+    (2.0, 7, 900),
+    (2.4, 2, 900),
+    (2.8, 8, 900),
+    (3.2, 3, 900),
+    (4.0, 4, 900),
+    (5.0, 9, 900),
+    (6.0, 5, 900),
+    (8.0, 10, 900),
+    (10.0, 6, 900),
 ]
-PEAK_PERIOD_MAX = 1.0  # period <= this counts as peak for the is_peak feature
+PEAK_PERIOD_MAX = 3.0  # period <= this counts as peak for the is_peak feature
 
 
 def make_route_file(period: float, seed: int):
