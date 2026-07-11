@@ -127,6 +127,10 @@ class SumoEnv:
         ]
         if self._seed is not None:
             args += ["--seed", str(self._seed)]
+        if self._gui:
+            # Begin stepping immediately — without this, sumo-gui waits for a
+            # manual ▶ click and TraCI-driven runs sit frozen at t=0.
+            args += ["--start"]
         # Unique connection label: traci refuses to reuse a label that is
         # still active, so a run that ended without a clean close() (e.g. a
         # Streamlit rerun mid-error) would otherwise block every future
