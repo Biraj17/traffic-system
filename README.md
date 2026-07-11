@@ -11,6 +11,10 @@ interchange — adaptive+ML control cuts average junction wait by
 1363 → 276 s/cycle, and moves **more vehicles on every seed**
 (mean throughput 150 → 161) vs a classic fixed timer.
 
+![Ambulance dispatch demo — emergency corridor at Kalanki Chowk](docs/img/ambulance-demo.gif)
+*Live: an ambulance is dispatched, every other approach goes red, and the
+corridor clears itself the moment it crosses the junction.*
+
 ![Live dashboard junction view — ambulance corridor active](docs/img/dashboard-junction.png)
 *Dashboard live map during an ambulance dispatch at Kalanki Chowk: the
 corridor is green, every other approach red, the ambulance (red arrow) at
