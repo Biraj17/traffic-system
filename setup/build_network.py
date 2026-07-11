@@ -24,6 +24,7 @@ import argparse
 import os
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -258,7 +259,6 @@ def extract_place_names(poly_file: Path, places_file: Path) -> None:
     from Streamlit segfault.
     """
     import json
-    import xml.etree.ElementTree as ET
 
     places: list[tuple[float, float, str]] = []
     for el in ET.parse(poly_file).getroot():
@@ -282,17 +282,38 @@ def extract_place_names(poly_file: Path, places_file: Path) -> None:
     print(f"Wrote {len(places)} named places to {places_file}")
 
 
-def write_gui_settings(view_file: Path) -> None:
-    """Write sumo-gui view settings: the 'real world' scheme so vehicles show
-    their true shapes/colors and buildings render like a map."""
+def write_gui_settings(view_file: Path, net_file: Path) -> None:
+    """Write sumo-gui view settings: 'real world' scheme, camera opening
+    zoomed on the signalized junction so the red/green stop bars are obvious."""
+    # Camera target = the busiest traffic-light junction (same rule the
+    # controller uses for discovery): most incoming lanes wins.
+    best = None  # (lane count, x, y)
+    for _, el in ET.iterparse(str(net_file)):
+        if el.tag == "junction" and el.get("type") == "traffic_light":
+            n = len(el.get("incLanes", "").split())
+            if best is None or n > best[0]:
+                best = (n, float(el.get("x")), float(el.get("y")))
+        el.clear()
+    x, y = (best[1], best[2]) if best else (0.0, 0.0)
+
     view_file.write_text(
-        """<viewsettings>
-    <scheme name="real world"/>
+        f"""<viewsettings>
+    <!-- Start the camera right on the signalized junction, close enough that
+         the red/green signal bars at every stop line are clearly readable.
+         zoom=100 would show the whole network; 1600 is roughly a 100 m circle. -->
+    <viewport zoom="1600" x="{x:.2f}" y="{y:.2f}"/>
+    <scheme name="real world">
+        <!-- Slightly wider lanes so the colored link rules (the signal state
+             bars painted across each lane at the stop line) stand out; keep
+             realisticLinkRules off so bars use bright full red/green/yellow. -->
+        <edges laneShowBorders="1" showLinkDecals="1" showLinkRules="1"
+               realisticLinkRules="0" widthExaggeration="1.4"/>
+    </scheme>
     <delay value="60"/>
 </viewsettings>
 """
     )
-    print(f"Wrote {view_file}")
+    print(f"Wrote {view_file} (camera on junction at {x:.0f},{y:.0f})")
 
 
 def write_sumocfg(net_file: Path, route_files: list[Path], cfg_file: Path) -> None:
@@ -355,7 +376,7 @@ def main() -> None:
     # Real Kalanki buildings and named places for the visual layers.
     generate_polygons(osm_file, config.NET_FILE, config.POLY_FILE)
     extract_place_names(config.POLY_FILE, config.PLACES_FILE)
-    write_gui_settings(config.GUI_SETTINGS_FILE)
+    write_gui_settings(config.GUI_SETTINGS_FILE, config.NET_FILE)
 
     # Default scenario runs peak demand + pedestrians; off-peak is for ML.
     write_sumocfg(
