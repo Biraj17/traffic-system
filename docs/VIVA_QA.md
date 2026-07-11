@@ -7,12 +7,13 @@ A fixed timer gives every approach the same green (25 s here) in strict
 rotation regardless of demand — empty lanes waste green while queued lanes
 overflow. Adaptive control measures each approach every cycle (vehicle count
 + accumulated waiting time) and allocates green proportional to demand. On
-identical peak demand at the real 8-phase Kalanki junction, our adaptive
-mode cut average junction wait 97.6% ± 0.5 (97.1–98.3% across 5 random
-seeds; mean 346 → 8 s/cycle) and raised mean throughput 318 → 338 — the
-fixed timer wastes whole green slots on empty turn phases, the adaptive
-controller skips them. The spread across seeds shows it is not one lucky
-run: the per-seed table is in the dashboard and logs/.
+identical peak demand at the real 8-phase Kalanki junction (with sublane
+motorbike weaving on), our adaptive mode cut average junction wait
+97.2% ± 0.7 (96.3–98.1% across 5 random seeds; mean 354 → 10 s/cycle) at
+essentially unchanged throughput (330 → 326 mean) — the fixed timer wastes
+whole green slots on empty turn phases, the adaptive controller skips
+them. The spread across seeds shows it is not one lucky run: the per-seed
+table is in the dashboard and logs/.
 
 **2. How is green time computed?**
 Two estimates blended. Rule: `green = vehicle_count × 2 s/vehicle`, clamped

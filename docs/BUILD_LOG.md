@@ -192,4 +192,17 @@ check results, and anything the user must verify or fix.
   mean throughput 318 → 338.** One seed (42) traded throughput for wait
   (362 → 303) — stated honestly; the mean still rises. Per-seed table saved
   to logs/ and rendered in a new dashboard section.
+- **Motorbike weaving**: sublane model on (0.4 m lateral resolution);
+  bikes ride off-center (~31% of samples; cars stay at 0.00 m) and pass
+  halted cars within a lane. Compact alignment for cars was tried and
+  reverted (pushed vehicles out of their lanes).
+- **Rush-hour "Full day" scenario**: 30-min compressed day
+  (periods 2.5/0.9/0.3/1.4/2.5 s); under adaptive control the mean
+  junction wait tracks it 0.1 → 26 → 100 → 71 → 6 s. Dashboard gained a
+  demand-scenario selector.
+- **Headline re-measured with sublane weaving on: 97.2% ± 0.7
+  (96.3–98.1%), mean wait 354 → 9.8 s/cycle, throughput essentially
+  unchanged (330 → 326)** — all docs use these post-weaving numbers.
+- README gained real screenshots (docs/img/): the live dashboard map mid
+  ambulance-dispatch and the zoomed sumo-gui view.
 - 52 tests green; every increment committed + pushed.

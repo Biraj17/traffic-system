@@ -4,10 +4,18 @@ An adaptive, AI-driven traffic signal control system simulated on a real
 Kathmandu intersection (default: **Kalanki**), with an operator dashboard.
 
 **Headline result:** on identical peak demand at the real 8-phase Kalanki
-junction, adaptive+ML control cuts average junction wait by
-**97.6% ± 0.5 (range 97.1–98.3% across 5 random seeds)** — mean wait
-346 → 8 s/cycle, mean throughput 318 → 338 vehicles — vs a classic fixed
+junction (sublane motorbike weaving on), adaptive+ML control cuts average
+junction wait by **97.2% ± 0.7 (range 96.3–98.1% across 5 random seeds)** —
+mean wait 354 → 10 s/cycle at unchanged throughput — vs a classic fixed
 timer, which wastes green time on empty turn phases.
+
+![Live dashboard junction view — ambulance corridor active](docs/img/dashboard-junction.png)
+*Dashboard live map during an ambulance dispatch: the corridor approach is
+green, every other approach red, the ambulance (large red arrow) inbound.
+Buildings and place names are real OSM data.*
+
+![sumo-gui zoomed on the Kalanki signals](docs/img/sumo-gui-kalanki.png)
+*sumo-gui opens centered on the junction with readable signal stop bars.*
 
 ## Realistic by construction
 

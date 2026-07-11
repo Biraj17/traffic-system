@@ -68,13 +68,13 @@ streamlit run dashboard/app.py
 
 When the comparison finishes, point at the headline:
 
-**"Same demand, same junction: the fixed timer averages ~346 s of junction
-wait per cycle; our adaptive system averages ~8 s — a 97.6% reduction,
-consistent across 5 random seeds (97.1–98.3%) — and moves more vehicles
-(mean 318 → 338). The real Kalanki junction has 8 signal phases including
-turn phases; a fixed timer wastes green on empty ones, the adaptive system
-skips them."** (For the seed table live, use **Run 5-seed comparison** —
-it takes a few minutes, so run it before the demo or show `logs/`.)
+**"Same demand, same junction: the fixed timer averages ~354 s of junction
+wait per cycle; our adaptive system averages ~10 s — a 97.2% reduction,
+consistent across 5 random seeds (96.3–98.1%) — at the same throughput.
+The real Kalanki junction has 8 signal phases including turn phases; a
+fixed timer wastes green on empty ones, the adaptive system skips
+them."** (For the seed table live, use **Run 5-seed comparison** — it
+takes a few minutes, so run it before the demo or show `logs/`.)
 
 ## 5. Close (30 s)
 
