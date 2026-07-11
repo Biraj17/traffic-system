@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from typing import TYPE_CHECKING
 
 from src import config
@@ -126,8 +127,13 @@ class SumoEnv:
         ]
         if self._seed is not None:
             args += ["--seed", str(self._seed)]
-        traci.start(args)
-        self._traci = traci
+        # Unique connection label: traci refuses to reuse a label that is
+        # still active, so a run that ended without a clean close() (e.g. a
+        # Streamlit rerun mid-error) would otherwise block every future
+        # start with "Connection 'default' is already active".
+        label = f"kalanki_{uuid.uuid4().hex[:8]}"
+        traci.start(args, label=label)
+        self._traci = traci.getConnection(label)
 
     def step(self) -> None:
         """Advance the simulation by one step (config.STEP_LENGTH_SEC seconds)."""
