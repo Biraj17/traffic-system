@@ -4,9 +4,10 @@ An adaptive, AI-driven traffic signal control system simulated on a real
 Kathmandu intersection (default: **Kalanki**), with an operator dashboard.
 
 **Headline result:** on identical peak demand at the real 8-phase Kalanki
-junction, adaptive+ML control cuts average junction wait by **~97%**
-(296 → 9 s/cycle) and raises throughput **281 → 364 vehicles** vs a classic
-fixed timer, which wastes green time on empty turn phases.
+junction, adaptive+ML control cuts average junction wait by
+**97.6% ± 0.5 (range 97.1–98.3% across 5 random seeds)** — mean wait
+346 → 8 s/cycle, mean throughput 318 → 338 vehicles — vs a classic fixed
+timer, which wastes green time on empty turn phases.
 
 ## Realistic by construction
 

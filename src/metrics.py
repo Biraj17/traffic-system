@@ -65,11 +65,13 @@ def save_run_log(df: pd.DataFrame, label: str) -> None:
     df.to_csv(config.LOGS_DIR / f"run_{label}_{stamp}.csv", index=False)
 
 
-def run_scenario(mode_name: str, sim_seconds: int = 600, use_ml: bool = True) -> pd.DataFrame:
+def run_scenario(mode_name: str, sim_seconds: int = 600, use_ml: bool = True,
+                 seed: int | None = None) -> pd.DataFrame:
     """Run one headless scenario on the standard peak demand; return its metrics.
 
-    mode_name: 'fixed' or 'auto'. Imported lazily so the dashboard can import
-    metrics without SUMO present.
+    mode_name: 'fixed' or 'auto'. `seed` sets SUMO's random seed (insertion
+    timing + driver imperfection) so repeated experiments vary realistically.
+    Imported lazily so the dashboard can import metrics without SUMO present.
     """
     from src.controller import Controller, Mode
     from src.sumo_env import SumoEnv
@@ -83,7 +85,7 @@ def run_scenario(mode_name: str, sim_seconds: int = 600, use_ml: bool = True) ->
         except Exception:
             pass
 
-    env = SumoEnv(gui=False)
+    env = SumoEnv(gui=False, seed=seed)
     env.start()
     mode = Mode.FIXED if mode_name == "fixed" else Mode.AUTOMATIC
     ctl = Controller(env, mode=mode, ml_predict=ml_predict)
@@ -112,5 +114,55 @@ def compare_baseline(sim_seconds: int = 600) -> dict:
             "wait_reduction_pct": reduction,
             "fixed_throughput": fixed_kpi["throughput"],
             "auto_throughput": auto_kpi["throughput"],
+        },
+    }
+
+
+DEFAULT_SEEDS = (7, 11, 23, 42, 101)
+
+
+def compare_seeds(sim_seconds: int = 600,
+                  seeds: tuple[int, ...] = DEFAULT_SEEDS) -> dict:
+    """Statistical version of the headline experiment: fixed vs adaptive
+    under several SUMO random seeds (same demand file, different insertion
+    timing and driver randomness), so the result is a mean ± spread rather
+    than one possibly-lucky number.
+
+    Returns {'runs': DataFrame (one row per seed), 'summary': {...}} and
+    saves the per-seed table to logs/.
+    """
+    rows = []
+    for seed in seeds:
+        fixed_kpi = kpis(run_scenario("fixed", sim_seconds, seed=seed))
+        auto_kpi = kpis(run_scenario("auto", sim_seconds, seed=seed))
+        reduction = 0.0
+        if fixed_kpi["avg_wait"] > 0:
+            reduction = 100.0 * (fixed_kpi["avg_wait"] - auto_kpi["avg_wait"]) \
+                / fixed_kpi["avg_wait"]
+        rows.append(
+            {
+                "seed": seed,
+                "fixed_avg_wait": fixed_kpi["avg_wait"],
+                "auto_avg_wait": auto_kpi["avg_wait"],
+                "wait_reduction_pct": reduction,
+                "fixed_throughput": fixed_kpi["throughput"],
+                "auto_throughput": auto_kpi["throughput"],
+            }
+        )
+    runs = pd.DataFrame(rows)
+    save_run_log(runs, "seed_comparison")
+    r = runs["wait_reduction_pct"]
+    return {
+        "runs": runs,
+        "summary": {
+            "n_seeds": len(seeds),
+            "mean_reduction_pct": float(r.mean()),
+            "std_reduction_pct": float(r.std(ddof=0)),
+            "min_reduction_pct": float(r.min()),
+            "max_reduction_pct": float(r.max()),
+            "mean_fixed_wait": float(runs["fixed_avg_wait"].mean()),
+            "mean_auto_wait": float(runs["auto_avg_wait"].mean()),
+            "mean_fixed_throughput": float(runs["fixed_throughput"].mean()),
+            "mean_auto_throughput": float(runs["auto_throughput"].mean()),
         },
     }

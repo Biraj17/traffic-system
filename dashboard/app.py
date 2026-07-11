@@ -430,3 +430,43 @@ if comp is not None:
                              line={"color": C_ADAPTIVE, "width": 2}))
     st.plotly_chart(base_layout(fig, "Accumulated junction wait per cycle — same demand",
                                 "waiting time (s)"), width="stretch")
+
+# ---- statistical rigor: repeat across random seeds ----
+st.divider()
+st.subheader("Repeatability — 5 random seeds")
+st.caption("Same experiment repeated with 5 SUMO random seeds (different vehicle "
+           "insertion timing and driver behavior), so the headline is a mean ± "
+           "spread instead of one lucky run.")
+
+if st.button("Run 5-seed comparison (10 × 600 s headless)", disabled=sim_running()):
+    with st.spinner("Running fixed + adaptive for each of 5 seeds "
+                    "(a few minutes) ..."):
+        st.session_state.seed_comparison = metrics.compare_seeds(sim_seconds=600)
+
+seed_comp = st.session_state.get("seed_comparison")
+if seed_comp is not None:
+    s = seed_comp["summary"]
+    st.markdown(
+        f"<h3 style='color:{C_GOOD}'>Wait cut by {s['mean_reduction_pct']:.1f}% on average "
+        f"(range {s['min_reduction_pct']:.1f}–{s['max_reduction_pct']:.1f}% "
+        f"across {s['n_seeds']} seeds)</h3>", unsafe_allow_html=True)
+    g1, g2, g3 = st.columns(3)
+    g1.metric("Mean avg wait (fixed → adaptive)",
+              f"{s['mean_fixed_wait']:.0f} → {s['mean_auto_wait']:.1f} s")
+    g2.metric("Reduction, mean ± std",
+              f"{s['mean_reduction_pct']:.1f}% ± {s['std_reduction_pct']:.1f}")
+    g3.metric("Mean throughput (fixed → adaptive)",
+              f"{s['mean_fixed_throughput']:.0f} → {s['mean_auto_throughput']:.0f}")
+
+    runs = seed_comp["runs"]
+    fig = go.Figure(go.Bar(x=[f"seed {int(x)}" for x in runs["seed"]],
+                           y=runs["wait_reduction_pct"],
+                           marker_color=C_ADAPTIVE, marker_line_width=0, width=0.55,
+                           text=[f"{v:.1f}%" for v in runs["wait_reduction_pct"]],
+                           textposition="outside", textfont={"color": "#0b0b0b"}))
+    fig = base_layout(fig, "Wait reduction by seed", "% reduction")
+    fig.update_layout(yaxis_range=[0, 105],
+                      xaxis={"title": "SUMO random seed", "gridcolor": GRID})
+    st.plotly_chart(fig, width="stretch")
+    with st.expander("Per-seed data"):
+        st.dataframe(runs, width="stretch")

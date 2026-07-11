@@ -52,20 +52,25 @@ streamlit run dashboard/app.py
 4. Switch mode to **Fixed timer**, then back to **Automatic** — "the operator
    can override the AI at any time." Note the approaches are named by their
    real streets (Tribhuvan Rajpath).
-5. Pick an approach and hit **🚨 ACTIVATE** — "one click gives an ambulance a
-   green corridor; everything else goes red." Then **Clear** — "and it
-   restores exactly the state it interrupted."
-6. Click **Stop simulation**, then **Run comparison**.
+5. In the **🚦 Traffic lights** panel, click **Give green** on any approach —
+   "the operator can open any light directly; the system still forces the
+   yellow and all-red safety phases." Then **🤖 Resume automatic**.
+6. Pick an approach and hit **🚑 Dispatch ambulance** — "a real ambulance
+   spawns, every other light goes red, and watch: the moment it crosses the
+   junction, the corridor clears itself and the previous state is restored."
+7. Click **Stop simulation**, then **Run comparison**.
 
 ## 4. The money shot (45 s)
 
 When the comparison finishes, point at the headline:
 
-**"Same demand, same junction: the fixed timer averages ~296 s of junction
-wait per cycle; our adaptive system averages ~9 s — a ~97% reduction — and
-moves 30% more vehicles (281 → 364). The real Kalanki junction has 8 signal
-phases including turn phases; a fixed timer wastes green on empty ones,
-the adaptive system skips them."**
+**"Same demand, same junction: the fixed timer averages ~346 s of junction
+wait per cycle; our adaptive system averages ~8 s — a 97.6% reduction,
+consistent across 5 random seeds (97.1–98.3%) — and moves more vehicles
+(mean 318 → 338). The real Kalanki junction has 8 signal phases including
+turn phases; a fixed timer wastes green on empty ones, the adaptive system
+skips them."** (For the seed table live, use **Run 5-seed comparison** —
+it takes a few minutes, so run it before the demo or show `logs/`.)
 
 ## 5. Close (30 s)
 

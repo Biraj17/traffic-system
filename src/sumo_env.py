@@ -90,9 +90,11 @@ class SumoEnv:
     All durations are in seconds; all counts are vehicles.
     """
 
-    def __init__(self, sumocfg: str | None = None, gui: bool = False) -> None:
+    def __init__(self, sumocfg: str | None = None, gui: bool = False,
+                 seed: int | None = None) -> None:
         self._sumocfg = sumocfg or str(config.SUMOCFG_FILE)
         self._gui = gui
+        self._seed = seed  # SUMO random seed (insertion/driver randomness)
         self._traci = None
         self.total_arrived = 0  # vehicles that completed their trip so far
 
@@ -104,17 +106,18 @@ class SumoEnv:
         binary = "sumo-gui" if self._gui else "sumo"
         if self._gui:
             ensure_display_for_gui()
-        traci.start(
-            [
-                binary,
-                "-c",
-                self._sumocfg,
-                "--step-length",
-                str(config.STEP_LENGTH_SEC),
-                "--no-warnings",
-                "--quit-on-end",
-            ]
-        )
+        args = [
+            binary,
+            "-c",
+            self._sumocfg,
+            "--step-length",
+            str(config.STEP_LENGTH_SEC),
+            "--no-warnings",
+            "--quit-on-end",
+        ]
+        if self._seed is not None:
+            args += ["--seed", str(self._seed)]
+        traci.start(args)
         self._traci = traci
 
     def step(self) -> None:

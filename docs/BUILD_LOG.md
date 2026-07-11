@@ -168,3 +168,28 @@ check results, and anything the user must verify or fix.
   wait 96.8% (296 → 9.4 s/cycle) and lifts throughput 281 → 364** — the
   fixed timer wastes green on empty turn phases; adaptive skips them.
 - 46 tests green throughout; every increment committed + pushed.
+
+## Phase 9 — operator control & statistical rigor ✅ verified
+
+- **sumo-gui opens on the signals**: generated view settings now start the
+  camera centered on the Kalanki TLS at ~100 m scale with lane width
+  slightly exaggerated — red/green stop bars readable immediately
+  (verified with an in-sim snapshot at t=60).
+- **Traffic-light panel**: dashboard shows every approach's live color
+  (from the control thread's snapshot — the UI still never touches TraCI)
+  with street name, waiting count, and a "Give green" button → Manual mode
+  with that approach held; "Resume automatic" hands back. Panel and sidebar
+  stay in sync via staged widget values. Sidebar selectboxes switched to
+  plain label options because streamlit's AppTest cannot round-trip
+  format_func; the whole click flow is now AppTest-verified.
+- **Ambulance dispatch**: spawns a real ambulance vType (white, emergency
+  shape, 1.5× speed factor) on the chosen approach, opens the normal
+  emergency corridor, and auto-clears the moment the vehicle crosses the
+  junction — save/restore identical to manual emergencies. Verified live
+  against SUMO end-to-end.
+- **5-seed comparison: adaptive+ML cuts average wait 97.6% ± 0.5
+  (range 97.1–98.3% across seeds 7/11/23/42/101; mean 346 → 8.2 s/cycle),
+  mean throughput 318 → 338.** One seed (42) traded throughput for wait
+  (362 → 303) — stated honestly; the mean still rises. Per-seed table saved
+  to logs/ and rendered in a new dashboard section.
+- 52 tests green; every increment committed + pushed.
