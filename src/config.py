@@ -75,3 +75,9 @@ AMBULANCE_COLOR = (255, 255, 255, 255)  # white body in sumo-gui
 
 # --- Simulation step ---------------------------------------------------
 STEP_LENGTH_SEC = 1.0
+
+# --- Sublane model ----------------------------------------------------------
+# Width (m) of the lateral strips each lane is divided into. Enables SUMO's
+# sublane model so narrow vehicles (motorbikes) filter between queued cars
+# to the stop line, like real Kalanki traffic.
+LATERAL_RESOLUTION_M = 0.4

@@ -336,6 +336,10 @@ def write_sumocfg(net_file: Path, route_files: list[Path], cfg_file: Path) -> No
         <begin value="0"/>
         <step-length value="{config.STEP_LENGTH_SEC}"/>
     </time>
+    <processing>
+        <!-- Sublane model: motorbikes weave between queued cars to the front. -->
+        <lateral-resolution value="{config.LATERAL_RESOLUTION_M}"/>
+    </processing>
     <gui_only>
         <gui-settings-file value="{config.GUI_SETTINGS_FILE.name}"/>
     </gui_only>

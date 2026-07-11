@@ -105,7 +105,10 @@ more realistic junction → bigger advantage for adaptive control.
 
 **Limitations (be honest, it scores points)**
 Simulated demand (though the mix is calibrated to Kathmandu shares), one
-junction (no corridor coordination), the ML dataset is modest (438 rows —
-more episodes would improve it), and motorbike weaving between lanes is only
-approximated by SUMO's lane-based model (SUMO's sublane model is a
-documented future refinement).
+junction (no corridor coordination), and the ML dataset is modest (438
+rows — more episodes would improve it). Motorbike weaving IS modeled:
+SUMO's sublane model runs with 0.4 m lateral resolution, and motorbikes
+(latAlignment="arbitrary", tight lateral gaps, high lcPushy/lcSublane)
+measurably filter between queued vehicles toward the stop line — verified
+by sampling lateral positions (≈⅓ of bikes ride off-center; cars stay
+centered) and observing bikes passing halted cars within a lane.
