@@ -12,6 +12,7 @@ network/*.alt.xml
 network/*.poly.xml
 network/*.view.xml
 network/*.places.json
+network/*.labels.xml
 
 # Generated data/models/logs
 data/*.csv
