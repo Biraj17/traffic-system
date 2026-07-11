@@ -67,5 +67,11 @@ AVG_TIME_PER_VEHICLE_SEC = 2.0
 # --- Fairness / anti-starvation --------------------------------------------
 MAX_WAIT_SEC = 90
 
+# --- Ambulance demo ---------------------------------------------------------
+# Runtime-created vType (copied from the 'car' type in kathmandu.vtypes.xml).
+AMBULANCE_TYPE_ID = "ambulance"
+AMBULANCE_SPEED_FACTOR = 1.5   # drives well above the flow when the road is clear
+AMBULANCE_COLOR = (255, 255, 255, 255)  # white body in sumo-gui
+
 # --- Simulation step ---------------------------------------------------
 STEP_LENGTH_SEC = 1.0

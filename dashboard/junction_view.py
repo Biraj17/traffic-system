@@ -42,6 +42,9 @@ VEHICLE_STYLE = {
     "microbus":  {"color": "#e0a10d", "size": 12},
     "bus":       {"color": "#0fa37a", "size": 15},
     "truck":     {"color": "#6e6e78", "size": 14},
+    # Runtime-spawned emergency vehicle (see Controller.dispatch_ambulance):
+    # status red + biggest marker so it reads instantly on the map.
+    "ambulance": {"color": "#d03b3b", "size": 17},
 }
 DEFAULT_STYLE = {"color": "#2a78d6", "size": 10}
 

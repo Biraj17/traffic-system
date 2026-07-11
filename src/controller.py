@@ -58,6 +58,13 @@ class Controller:
         # TraCI traffic stays on the control-loop thread (dashboard safety).
         self._pending_emergency: int | None = None
         self._pending_clear = False
+        # Ambulance demo: spawned on the control thread, corridor auto-clears
+        # once the vehicle has crossed the junction.
+        self._pending_ambulance: int | None = None
+        self.ambulance_id: str | None = None
+        self._ambulance_entry_edge: str | None = None
+        self._ambulance_seen = False  # inserted into the running sim yet?
+        self._ambulance_seq = 0
         self._fixed_rotation: int = 0
         self.metrics_log: list[dict] = []
         self.stop_requested = False  # set by the dashboard to end run() cleanly
@@ -147,8 +154,55 @@ class Controller:
         """Request end of the corridor; prior mode+state restored at next decision."""
         self._pending_clear = True
 
+    def dispatch_ambulance(self, approach: int) -> None:
+        """Request an ambulance on `approach` with an emergency corridor.
+
+        The vehicle is spawned on the control thread at the next decision
+        point; the corridor clears itself once the ambulance has crossed
+        the junction (or the operator clears it manually).
+        """
+        self._pending_ambulance = approach
+
+    def _spawn_ambulance(self, approach: int) -> str:
+        """Insert an ambulance at the start of the approach, routed across
+        the junction. Returns the vehicle id."""
+        _, lanes = self.approaches[approach]
+        entry_lane = lanes[0]
+        entry_edge = self.env.get_lane_edge(entry_lane)
+        edges = [entry_edge]
+        successors = self.env.get_lane_links(entry_lane)
+        if successors:
+            edges.append(self.env.get_lane_edge(successors[0]))
+        self.env.ensure_vehicle_type(config.AMBULANCE_TYPE_ID)
+        veh_id = f"{config.AMBULANCE_TYPE_ID}_{self._ambulance_seq}"
+        self._ambulance_seq += 1
+        self.env.add_vehicle(veh_id, edges, config.AMBULANCE_TYPE_ID)
+        self._ambulance_entry_edge = entry_edge
+        self._ambulance_seen = False
+        return veh_id
+
+    def _ambulance_passed(self) -> bool:
+        """True once the dispatched ambulance has crossed the stop line
+        (left its entry edge) or finished its trip."""
+        if self.ambulance_id is None:
+            return False
+        if not self.env.vehicle_exists(self.ambulance_id):
+            # Not in the sim: either arrived (seen before) or still waiting
+            # to be inserted into a congested entry edge (never seen).
+            return self._ambulance_seen
+        self._ambulance_seen = True
+        road = self.env.get_vehicle_road(self.ambulance_id)
+        return bool(road) and road != self._ambulance_entry_edge
+
     def _process_emergency_requests(self) -> None:
         """Apply queued emergency trigger/clear (runs on the control thread)."""
+        if self._pending_ambulance is not None:
+            approach, self._pending_ambulance = self._pending_ambulance, None
+            try:
+                self.ambulance_id = self._spawn_ambulance(approach)
+                self._pending_emergency = approach  # corridor via the normal path
+            except Exception as exc:
+                print(f"[controller] ambulance spawn failed ({exc})")
         if self._pending_emergency is not None:
             self._saved = emergency.activate(
                 self._saved, self.mode, self.env.get_current_state(self.tls_id)
@@ -158,6 +212,7 @@ class Controller:
             self.requested_mode = Mode.EMERGENCY
         if self._pending_clear:
             self._pending_clear = False
+            self.ambulance_id = None
             if self._saved is not None:
                 snapshot, self._saved = self._saved, None
                 self.emergency_lane = None
@@ -197,6 +252,13 @@ class Controller:
                         "tls_state": step.state,
                         "time": self.env.sim_time(),
                     }
+                # Ambulance corridor ends the moment the vehicle has crossed:
+                # cut the green hold short; the next decide() restores the
+                # saved mode/state through a normal safe transition.
+                if (self.mode == Mode.EMERGENCY and self.ambulance_id is not None
+                        and self._ambulance_passed()):
+                    self.clear_emergency()
+                    return
 
     def serve(self, approach: int, green_sec: float) -> None:
         """Give `approach` a green of `green_sec` seconds via a safe transition."""

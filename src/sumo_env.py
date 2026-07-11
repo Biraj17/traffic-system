@@ -187,6 +187,50 @@ class SumoEnv:
         """Number of halted (queued) vehicles on a lane."""
         return int(self._traci.lane.getLastStepHaltingNumber(lane_id))
 
+    # -- vehicles (ambulance demo) ---------------------------------------------
+
+    def get_lane_edge(self, lane_id: str) -> str:
+        """The edge a lane belongs to."""
+        return str(self._traci.lane.getEdgeID(lane_id))
+
+    def get_lane_links(self, lane_id: str) -> list[str]:
+        """Successor lane ids reachable from `lane_id` across its junction."""
+        return [str(link[0]) for link in self._traci.lane.getLinks(lane_id)]
+
+    def ensure_vehicle_type(
+        self,
+        type_id: str,
+        base: str = "car",
+        color: tuple[int, int, int, int] = config.AMBULANCE_COLOR,
+        speed_factor: float = config.AMBULANCE_SPEED_FACTOR,
+    ) -> None:
+        """Create vType `type_id` at runtime as a copy of `base` (idempotent).
+
+        Used for the ambulance: white, faster than the flow, drawn with the
+        emergency shape so sumo-gui shows a proper ambulance van.
+        """
+        if type_id in self._traci.vehicletype.getIDList():
+            return
+        self._traci.vehicletype.copy(base, type_id)
+        self._traci.vehicletype.setColor(type_id, color)
+        self._traci.vehicletype.setSpeedFactor(type_id, speed_factor)
+        self._traci.vehicletype.setShapeClass(type_id, "emergency")
+
+    def add_vehicle(self, veh_id: str, edges: list[str], type_id: str) -> None:
+        """Insert a vehicle with a fresh route along `edges` (departs next step)."""
+        route_id = f"route_{veh_id}"
+        self._traci.route.add(route_id, edges)
+        self._traci.vehicle.add(veh_id, route_id, typeID=type_id,
+                                departLane="best", departSpeed="max")
+
+    def vehicle_exists(self, veh_id: str) -> bool:
+        """True while the vehicle is in the running simulation (departed, not arrived)."""
+        return veh_id in self._traci.vehicle.getIDList()
+
+    def get_vehicle_road(self, veh_id: str) -> str:
+        """Current edge id of a vehicle ('' if unknown; ':...' inside a junction)."""
+        return str(self._traci.vehicle.getRoadID(veh_id))
+
     # -- live view -------------------------------------------------------------
 
     def get_live_vehicles(self) -> list[dict]:

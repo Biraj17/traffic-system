@@ -204,6 +204,11 @@ with st.sidebar:
     with col_b:
         if st.button("Clear", width="stretch", disabled=not sim_running()):
             ctl.clear_emergency()
+    if st.button("🚑 Dispatch ambulance", width="stretch",
+                 disabled=not sim_running()):
+        ctl.dispatch_ambulance(em_approach)
+    st.caption("Dispatch spawns a real ambulance on the selected approach; "
+               "its corridor clears automatically once it crosses the junction.")
 
 
 def signal_panel(ctl: Controller, latest: dict) -> None:
@@ -271,7 +276,9 @@ def live_view() -> None:
 
     mode_name = latest["mode"]
     if mode_name == "EMERGENCY":
-        st.error(f"🚨 EMERGENCY corridor active — {approach_label(ctl.emergency_lane or 0)} "
+        who = ("🚑 Ambulance en route" if ctl.ambulance_id is not None
+               else "🚨 EMERGENCY corridor active")
+        st.error(f"{who} — {approach_label(ctl.emergency_lane or 0)} "
                  "held green, all other approaches red.")
 
     t1, t2, t3, t4 = st.columns(4)
@@ -306,7 +313,8 @@ def live_view() -> None:
                 "<span style='color:#e0a10d'>▲ microbus</span> · "
                 "<span style='color:#0fa37a'>▲ bus</span> · "
                 "<span style='color:#6e6e78'>▲ truck</span> · "
-                "<span style='color:#8c5aa8'>● pedestrian</span><br/>"
+                "<span style='color:#8c5aa8'>● pedestrian</span> · "
+                "<span style='color:#d03b3b'>▲ ambulance</span><br/>"
                 "buildings & place names: real OSM data",
                 unsafe_allow_html=True,
             )
@@ -333,7 +341,8 @@ def live_view() -> None:
                         st.success(f"{tracked_id} completed its trip ✅")
                     else:
                         icon = {"motorbike": "🏍", "car": "🚗", "microbus": "🚐",
-                                "bus": "🚌", "truck": "🚚"}.get(v["type"], "🚗")
+                                "bus": "🚌", "truck": "🚚",
+                                "ambulance": "🚑"}.get(v["type"], "🚗")
                         road = v["road"]
                         street = ("crossing the junction" if road.startswith(":")
                                   else geo.lane_streets.get(road + "_0", road))
