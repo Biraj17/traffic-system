@@ -162,16 +162,25 @@ def ensure_traffic_light(osm_file: Path, net_file: Path) -> None:
 
 
 def generate_routes(
-    net_file: Path, tools_dir: Path, route_file: Path, period: float, seed: int, prefix: str
+    net_file: Path,
+    tools_dir: Path,
+    route_file: Path,
+    period: float | tuple[float, ...],
+    seed: int,
+    prefix: str,
+    end_sec: int | None = None,
 ) -> None:
     """Generate a realistic random-trip demand profile for the network.
 
     A smaller `period` means more frequent trip insertion (heavier traffic);
-    used to distinguish peak vs off-peak profiles. `prefix` keeps vehicle IDs
-    unique across route files so both can load together. Every trip draws its
-    vehicle type from the Kathmandu mix distribution (motorbikes, cars,
-    microbuses, buses, trucks — see network/kathmandu.vtypes.xml).
+    used to distinguish peak vs off-peak profiles. A tuple of periods splits
+    [0, end_sec) into equal time slices — that is how the rush-hour "day
+    curve" scenario is built. `prefix` keeps vehicle IDs unique across route
+    files so both can load together. Every trip draws its vehicle type from
+    the Kathmandu mix distribution (motorbikes, cars, microbuses, buses,
+    trucks — see network/kathmandu.vtypes.xml).
     """
+    periods = period if isinstance(period, tuple) else (period,)
     cmd = [
         sys.executable,
         str(tools_dir / "randomTrips.py"),
@@ -180,7 +189,7 @@ def generate_routes(
         "-r",
         str(route_file),
         "--period",
-        str(period),
+        *[str(p) for p in periods],
         "--seed",
         str(seed),
         "--prefix",
@@ -195,6 +204,8 @@ def generate_routes(
         "--edge-permission",
         "passenger",
     ]
+    if end_sec is not None:
+        cmd += ["-b", "0", "-e", str(end_sec)]
     print("Generating routes:", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
@@ -375,6 +386,13 @@ def main() -> None:
     generate_routes(
         config.NET_FILE, tools_dir, config.ROUTE_FILE_PEAK, period=0.8, seed=7, prefix="pk_"
     )
+    # A compressed "day": quiet -> school rush -> office peak -> lull -> quiet,
+    # so green times visibly track the demand curve on the dashboard.
+    generate_routes(
+        config.NET_FILE, tools_dir, config.ROUTE_FILE_DAY,
+        period=config.DAY_PERIODS, seed=13, prefix="day_",
+        end_sec=config.DAY_LENGTH_SEC,
+    )
     # People walking and crossing at the junction.
     generate_pedestrians(config.NET_FILE, tools_dir, config.ROUTE_FILE_PEDESTRIANS, seed=11)
     # Real Kalanki buildings and named places for the visual layers.
@@ -387,6 +405,12 @@ def main() -> None:
         config.NET_FILE,
         [config.ROUTE_FILE_PEAK, config.ROUTE_FILE_PEDESTRIANS],
         config.SUMOCFG_FILE,
+    )
+    # Alternative scenario: the compressed-day rush-hour curve.
+    write_sumocfg(
+        config.NET_FILE,
+        [config.ROUTE_FILE_DAY, config.ROUTE_FILE_PEDESTRIANS],
+        config.DAY_SUMOCFG_FILE,
     )
 
     print(

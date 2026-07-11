@@ -18,6 +18,11 @@ timer, which wastes green time on empty turn phases.
   and trucks, with true sizes and driving profiles (Kathmandu valley shares).
 - **Pedestrians** — 1800 people walking on guessed sidewalks and zebra
   crossings, signal-controlled at the junction.
+- **Motorbike weaving** — SUMO's sublane model (0.4 m lateral resolution):
+  bikes filter between queued cars to the stop line, like real Kalanki.
+- **Rush-hour rhythm** — a "Full day" scenario compresses dawn → school
+  rush → office peak → lull → evening into 30 minutes; watch junction
+  pressure rise ~1000× at peak while adaptive control keeps it flowing.
 - **Live tracking** — follow any vehicle on the dashboard map: type, speed,
   accumulated wait, current street.
 

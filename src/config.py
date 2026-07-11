@@ -16,12 +16,14 @@ LOGS_DIR = ROOT_DIR / "logs"
 NET_FILE = NETWORK_DIR / "kathmandu.net.xml"
 ROUTE_FILE_PEAK = NETWORK_DIR / "kathmandu.peak.rou.xml"
 ROUTE_FILE_OFFPEAK = NETWORK_DIR / "kathmandu.offpeak.rou.xml"
+ROUTE_FILE_DAY = NETWORK_DIR / "kathmandu.day.rou.xml"
 ROUTE_FILE_PEDESTRIANS = NETWORK_DIR / "kathmandu.pedestrians.rou.xml"
 VTYPES_FILE = NETWORK_DIR / "kathmandu.vtypes.xml"
 POLY_FILE = NETWORK_DIR / "kathmandu.poly.xml"          # real buildings/POIs (OSM)
 PLACES_FILE = NETWORK_DIR / "kathmandu.places.json"     # named POIs in net coords
 GUI_SETTINGS_FILE = NETWORK_DIR / "kathmandu.view.xml"  # sumo-gui real-world scheme
 SUMOCFG_FILE = NETWORK_DIR / "kathmandu.sumocfg"
+DAY_SUMOCFG_FILE = NETWORK_DIR / "kathmandu.day.sumocfg"  # rush-hour curve demand
 MODEL_FILE = MODELS_DIR / "green_time_rf.pkl"
 TRAINING_DATA_FILE = DATA_DIR / "training.csv"
 
@@ -75,6 +77,13 @@ AMBULANCE_COLOR = (255, 255, 255, 255)  # white body in sumo-gui
 
 # --- Simulation step ---------------------------------------------------
 STEP_LENGTH_SEC = 1.0
+
+# --- Rush-hour ("compressed day") demand curve ------------------------------
+# The day scenario splits DAY_LENGTH_SEC evenly across these randomTrips
+# insertion periods (seconds between departures; smaller = heavier traffic):
+# quiet dawn -> school rush -> office peak -> midday lull -> quiet evening.
+DAY_LENGTH_SEC = 1800
+DAY_PERIODS = (2.5, 0.9, 0.3, 1.4, 2.5)
 
 # --- Sublane model ----------------------------------------------------------
 # Width (m) of the lateral strips each lane is divided into. Enables SUMO's

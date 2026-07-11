@@ -41,7 +41,11 @@ green→yellow→all-red, never green to green."
 streamlit run dashboard/app.py
 ```
 
-1. Click **Start simulation** — tiles and charts come alive.
+1. Click **Start simulation** — tiles and charts come alive. (For the
+   day-rhythm story, pick **Full day (quiet → rush → quiet)** as the demand
+   scenario first: 30 compressed minutes of dawn → school rush → office
+   peak → lull → evening; junction wait climbs from ~0 to ~100 s at peak
+   and falls back as adaptive control absorbs it.)
 2. Point at the **green-time chart**: "each dot is one signal decision —
    watch the duration track demand."
 3. Point at the **live map**: "real buildings and place names around

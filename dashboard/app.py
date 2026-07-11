@@ -21,7 +21,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard import junction_view
-from src import metrics
+from src import config, metrics
 from src.controller import Controller, Mode
 
 # Validated dataviz palette (see dataviz skill reference): categorical slots
@@ -38,6 +38,11 @@ SURFACE = "#fcfcfb"
 MODE_AUTO_LABEL = "Automatic (adaptive + ML)"
 MODE_FIXED_LABEL = "Fixed timer"
 MODE_MANUAL_LABEL = "Manual"
+
+SCENARIOS = {
+    "Peak hour (steady)": None,  # default sumocfg
+    "Full day (quiet → rush → quiet)": str(config.DAY_SUMOCFG_FILE),
+}
 
 @st.cache_resource
 def junction_geo() -> junction_view.JunctionGeometry | None:
@@ -85,7 +90,7 @@ def base_layout(fig: go.Figure, title: str, y_title: str) -> go.Figure:
 # -- background control loop --------------------------------------------------
 
 
-def start_simulation() -> None:
+def start_simulation(sumocfg: str | None = None) -> None:
     """Launch SUMO + controller on a daemon thread; store handles in session."""
     from src.sumo_env import SumoEnv
 
@@ -97,7 +102,7 @@ def start_simulation() -> None:
     except Exception:
         pass
 
-    env = SumoEnv(gui=False)
+    env = SumoEnv(sumocfg=sumocfg, gui=False)
     env.start()
     ctl = Controller(env, mode=Mode.AUTOMATIC, ml_predict=ml_predict)
     ctl.capture_live = True  # stream positions/signals for the animated view
@@ -147,13 +152,18 @@ st.caption("Adaptive AI signal control on real OpenStreetMap geometry. "
 # ---- sidebar: simulation + mode controls ----
 with st.sidebar:
     st.header("Simulation")
+    scenario = st.selectbox("Demand scenario", options=list(SCENARIOS),
+                            disabled=sim_running(),
+                            help="Full day compresses dawn → school rush → "
+                                 "office peak → lull → evening into 30 min, "
+                                 "so you can watch green times track demand.")
     if sim_running():
         if st.button("⏹ Stop simulation", width="stretch"):
             stop_simulation()
             st.rerun()
     else:
         if st.button("▶ Start simulation", type="primary", width="stretch"):
-            start_simulation()
+            start_simulation(SCENARIOS[scenario])
             st.rerun()
 
     ctl: Controller | None = st.session_state.get("ctl")
