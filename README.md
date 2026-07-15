@@ -21,7 +21,8 @@ corridor is green, every other approach red, the ambulance (red arrow) at
 the junction. Buildings and place names are real OSM data.*
 
 ![sumo-gui zoomed on the Kalanki signals](docs/img/sumo-gui-kalanki.png)
-*sumo-gui opens centered on the chowk: named streets, the Ring Road
+*sumo-gui opens centered on the chowk: real OSM buildings in map colors
+(the amber block is an actual school), named streets, the Ring Road
 underpass box, zebra crossings, and readable signal stop bars.*
 
 ## Realistic by construction

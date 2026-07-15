@@ -384,6 +384,55 @@ def extract_place_names(poly_file: Path, places_file: Path) -> None:
     print(f"Stripped {removed} decorative POIs from {poly_file}")
 
 
+def restyle_polygons(poly_file: Path) -> None:
+    """Recolor the OSM polygons so sumo-gui reads like a real map.
+
+    polyconvert paints every building the same washed-out pink; real blocks
+    are a mix of tones. Each building gets one of a few warm plaster/brick
+    shades — chosen by CRC32 of its OSM id, so colors are stable across
+    rebuilds (hash() would reshuffle every run). Land-use types get their
+    familiar OSM-carto colors. Only sumo-gui is affected: the dashboard
+    draws buildings with its own palette (dashboard/junction_view.py).
+    """
+    import zlib
+
+    building_tones = [
+        "223,214,203", "214,203,190", "206,192,178", "217,209,199",
+        "199,187,175", "210,196,180",
+    ]
+    type_colors = {
+        "school": "242,224,164",
+        "kindergarten": "242,224,164",
+        "university": "242,224,164",
+        "commercial": "238,205,205",
+        "shop": "238,205,205",
+        "retail": "238,205,205",
+        "industrial": "223,209,214",
+        "residential": "228,224,218",
+        "amenity": "235,226,208",
+        "water": "170,211,223",
+        "forest": "205,224,196",
+        "park": "205,224,196",
+        "leisure": "205,224,196",
+        "grass": "213,229,203",
+    }
+
+    tree = ET.parse(poly_file)
+    recolored = 0
+    for poly in tree.getroot().findall("poly"):
+        ptype = poly.get("type", "")
+        if ptype == "building":
+            idx = zlib.crc32(poly.get("id", "").encode()) % len(building_tones)
+            poly.set("color", building_tones[idx])
+        elif ptype in type_colors:
+            poly.set("color", type_colors[ptype])
+        else:
+            continue
+        recolored += 1
+    tree.write(poly_file, encoding="UTF-8", xml_declaration=True)
+    print(f"Recolored {recolored} polygons in {poly_file}")
+
+
 def write_labels(net_file: Path, labels_file: Path, tls_id: str) -> None:
     """Write the junction-name label POI for sumo-gui.
 
@@ -434,6 +483,10 @@ def write_gui_settings(view_file: Path, net_file: Path) -> None:
          the whole network; 1100 is roughly a 150 m circle. -->
     <viewport zoom="1100" x="{x:.2f}" y="{y:.2f}"/>
     <scheme name="real world">
+        <!-- Map-style light beige instead of the scheme's saturated green:
+             the recolored OSM buildings (restyle_polygons) read like a real
+             city map against it. -->
+        <background backgroundColor="242,238,230" showGrid="0"/>
         <!-- Slightly wider lanes so the colored link rules (the signal state
              bars painted across each lane at the stop line) stand out; keep
              realisticLinkRules off so bars use bright full red/green/yellow. -->
@@ -531,6 +584,7 @@ def main() -> None:
     # Real Kalanki buildings and named places for the visual layers.
     generate_polygons(osm_file, config.NET_FILE, config.POLY_FILE)
     extract_place_names(config.POLY_FILE, config.PLACES_FILE)
+    restyle_polygons(config.POLY_FILE)
     write_gui_settings(config.GUI_SETTINGS_FILE, config.NET_FILE)
 
     # Junction + street name labels for sumo-gui (needs the signalized node).
